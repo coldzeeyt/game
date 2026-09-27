@@ -395,7 +395,6 @@
       if (Slots.any()) items.push({ id: 'load', label: 'LOAD GAME' });
       items.push(
         { id: 'tutorial', label: 'TUTORIAL' },
-        { id: 'multi', label: 'MULTIPLAYER' },
         { id: 'guide', label: 'GUIDE' },
         { id: 'lore', label: 'LORE' },
         { id: 'settings', label: 'SETTINGS' },
@@ -455,7 +454,6 @@
       else if (c.id === 'lore') setScene(Lore);
       else if (c.id === 'download') window.open(c.url, '_blank', 'noopener');
       else if (c.id === 'more') setScene(More);
-      else if (c.id === 'multi') setScene(Multi);
       else if (c.id === 'new') setScene(SlotSelect, 'new');
       else if (c.id === 'tutorial') startLevel(LEVELS.tutorial);
       else if (c.id === 'settings') setScene(Settings);
@@ -1287,7 +1285,7 @@
       const n = this.rows.length;
       if (hit(...K.up)) { this.index = (this.index + n - 1) % n; Sound.sfx('move'); }
       if (hit(...K.down)) { this.index = (this.index + 1) % n; Sound.sfx('move'); }
-      if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); return; }
+      if (hit(...K.back)) { Sound.sfx('select'); setScene(More); return; }
       const m = Input.mouse;
       let chosen = hit(...K.ok);
       if (m.click || m.moved) {
@@ -1304,7 +1302,7 @@
       if (row === 'name') this.editing = true;
       else if (row === 'create') { Net.host(this.name); setScene(Room); }
       else if (row === 'join') setScene(JoinCode);
-      else setScene(Title);
+      else setScene(More);
     },
     draw() {
       drawTitleBackdrop();
@@ -1435,8 +1433,8 @@
       this.save = Slots.load(Slots.HARDCORE);
       const items = [];
       if (this.save && !this.save.done) items.push({ id: 'cont', label: 'CONTINUE HARDCORE' });
-      items.push({ id: 'new', label: 'NEW HARDCORE RUN' }, { id: 'back', label: 'BACK' });
-      this.menu = makeMenu(items, 160, 16);
+      items.push({ id: 'new', label: 'NEW HARDCORE RUN' }, { id: 'multi', label: 'MULTIPLAYER' }, { id: 'back', label: 'BACK' });
+      this.menu = makeMenu(items, 140, 16);
       this.confirm = false;
     },
     update() {
@@ -1449,6 +1447,7 @@
       const c = this.menu.update();
       if (!c) return;
       if (c.id === 'back') setScene(Title);
+      else if (c.id === 'multi') setScene(Multi);
       else if (c.id === 'cont') playSlot(Slots.HARDCORE);
       else if (this.save && !this.save.done) this.confirm = true;
       else this.startNew();
@@ -1461,25 +1460,24 @@
     },
     draw() {
       drawTitleBackdrop();
-      panel(W / 2 - 170, 24, 340, 224);
+      this.menu.y = this.save ? 128 : 100;
+      const bottom = this.menu.y + this.menu.items.length * this.menu.spacing; // box fits its contents
+      panel(W / 2 - 150, 24, 300, bottom - 2);
       drawTextOutlined(ctx, 'MORE', W / 2, 34, PAL.C, 2, 'center');
-      drawText(ctx, 'HARDCORE MODE', W / 2, 62, PAL.e, 1, 'center');
-      ['THERE ARE NO CHECKPOINTS: IF YOU DIE,', 'THE WHOLE STAGE STARTS OVER.', '',
-        'YOUR RUN ONLY SAVES WHEN A NEW CHAPTER', 'BEGINS. LEAVE WHENEVER YOU LIKE, BUT YOU', 'WILL COME BACK AT THE START OF THAT CHAPTER.']
-        .forEach((l, i) => drawText(ctx, l, W / 2, 80 + i * 11, PAL.w, 1, 'center'));
+      drawText(ctx, 'HARDCORE: NO CHECKPOINTS.', W / 2, 64, PAL.e, 1, 'center');
+      drawText(ctx, 'SAVES ONLY AT THE START OF EACH CHAPTER.', W / 2, 76, PAL.w, 1, 'center');
       if (this.save) {
         const st = slotStats(this.save);
         const def = CAMPAIGN[Math.min(this.save.stage, CAMPAIGN.length - 1)];
-        drawText(ctx, this.save.done ? 'HARDCORE COMPLETE!' : 'SAVED AT CHAPTER ' + (def.chapter + 1) + ': ' + CHAPTERS[def.chapter].name, W / 2, 140, PAL.C, 1, 'center');
-        drawText(ctx, 'DEATHS ' + st.deaths + '   TIME ' + formatLong(st.time), W / 2, 150, PAL.m, 1, 'center');
+        drawText(ctx, this.save.done ? 'HARDCORE COMPLETE!' : 'SAVED AT CHAPTER ' + (def.chapter + 1) + ': ' + CHAPTERS[def.chapter].name, W / 2, 96, PAL.C, 1, 'center');
+        drawText(ctx, 'DEATHS ' + st.deaths + '   TIME ' + formatLong(st.time), W / 2, 106, PAL.m, 1, 'center');
       }
-      this.menu.y = this.save ? 168 : 150;
       this.menu.draw();
-      drawText(ctx, 'MORE EXTRAS COMING SOON!', W / 2, 232, PAL.n, 1, 'center');
+      drawText(ctx, 'MORE EXTRAS COMING SOON!', W / 2, bottom + 6, PAL.n, 1, 'center');
       if (this.confirm) {
-        panel(W / 2 - 130, 180, 260, 50, PAL.e);
-        drawText(ctx, 'START OVER? YOUR RUN WILL BE LOST.', W / 2, 190, PAL.e, 1, 'center');
-        drawText(ctx, 'ENTER: YES    ESC: NO', W / 2, 208, PAL.w, 1, 'center');
+        panel(W / 2 - 130, this.menu.y + 24, 260, 50, PAL.e);
+        drawText(ctx, 'START OVER? YOUR RUN WILL BE LOST.', W / 2, this.menu.y + 34, PAL.e, 1, 'center');
+        drawText(ctx, 'ENTER: YES    ESC: NO', W / 2, this.menu.y + 52, PAL.w, 1, 'center');
       }
     },
   };
