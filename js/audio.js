@@ -3,7 +3,6 @@ const TITLE_TRACKS = [
   'assets/music/silver-hand-man.mp3',
   'assets/music/dream-girl.mp3',
 ];
-const TRACK_NAMES = ['SILVER HAND MAN', 'DREAM GIRL'];
 
 const Sound = {
   ctx: null,
@@ -37,16 +36,6 @@ const Sound = {
       if (!this.music.src.endsWith(TITLE_TRACKS[0])) this.music.src = TITLE_TRACKS[0];
       this.music.currentTime = 0;
     }
-    this.music.volume = this.musicVolume;
-    this.music.play().catch(() => {});
-  },
-
-  // Jukebox: jump straight to a specific title song.
-  playTrack(i) {
-    if (!this.music) return;
-    clearInterval(this.fade);
-    this.track = i;
-    this.music.src = TITLE_TRACKS[i];
     this.music.volume = this.musicVolume;
     this.music.play().catch(() => {});
   },
@@ -108,6 +97,7 @@ const Sound = {
       case 'ember': [784, 988, 1175].forEach((f, i) => this.tone('square', f, f, 0.07, 0.05, i * 0.05)); break;
       case 'fragment': [220, 262, 330, 247].forEach((f, i) => this.tone('triangle', f, f * 0.99, 0.35, 0.09, i * 0.18)); break;
       case 'whisper': this.noise(0.8, 0.03); this.tone('sine', 110, 55, 1.0, 0.08); break;
+      case 'thunder': this.noise(1.6, 0.09); this.tone('triangle', 70, 30, 1.4, 0.14); break;
       case 'pause': this.tone('square', 440, 440, 0.08, 0.05); break;
       case 'die':
         this.noise(0.3, 0.1);

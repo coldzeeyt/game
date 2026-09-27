@@ -3,6 +3,15 @@
 An 8-bit style 2D platformer by **ColdzeeYT**. Climb the cliffs, don't fall off the edge, and
 find out who, or what, is watching you.
 
+## Story
+
+At the top of Mount Precipice burns the **Everflame**, a fire that grants a single wish. Years ago a
+climber named **Ash** set out to find it and never came back down. Last night, at the foot of the
+cliffs, you found Ash's red cap. It fit you perfectly.
+
+**Objective:** reach the summit and find the Everflame. Gather embers along the way, and find
+Ash's memories to learn the truth.
+
 ## Play
 
 Open `index.html` in a browser. Or serve the folder so the music loads in every browser:
@@ -37,21 +46,26 @@ The **Tutorial** on the title screen walks through every mechanic.
 
 ## The mystery
 
-Violet rune stones hold **memory fragments**, diary pages from a climber who came before you.
+Violet rune stones hold **memory fragments**, pages from Ash's diary.
 Something that wears your face appears ahead of you on the cliffs and vanishes when you
 approach. Collect every fragment in a stage to see what it has to say.
 
 ## Title screen
 
-New Game · Tutorial · Scores (best time, deaths, embers and memories, saved in the browser) ·
-Music (download the OST) · Source · Settings (placeholder) · Credits
+New Game (opens with the backstory; Esc skips it) · Tutorial · Settings (placeholder) · Credits
+
+## Credits
+
+- Game & design: ColdzeeYT
+- Music: "Silver Hand Man" by viraxor, "Dream Girl" by shark-pool
+- Source: https://github.com/coldzeeyt/game
 
 ## Project layout
 
 ```
 index.html          page + canvas
 js/font.js          5x7 and 3x5 bitmap pixel fonts
-js/gfx.js           placeholder sprites, tiles, background (all drawn in code)
+js/gfx.js           sprites, tiles, decorations, background (all drawn in code)
 js/audio.js         title music playlist + synthesized 8-bit sound effects
 js/levels.js        tutorial and stage 1 layouts (small builder API)
 js/game.js          input, scenes, player physics and rendering

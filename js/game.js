@@ -61,14 +61,49 @@
   let frame = 0;
   const blink = (rate = 30) => Math.floor(frame / rate) % 2 === 0;
 
-  function panel(x, y, w, h) {
+  // Dialog box: drop shadow, black outline, white frame with notched corners.
+  function panel(x, y, w, h, border = '#fcfcfc') {
+    x = Math.round(x);
+    y = Math.round(y);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(x + 3, y + 3, w, h);
     ctx.fillStyle = '#000000';
     ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = '#fcfcfc';
-    ctx.fillRect(x + 1, y + 1, w - 2, 1);
-    ctx.fillRect(x + 1, y + h - 2, w - 2, 1);
-    ctx.fillRect(x + 1, y + 1, 1, h - 2);
-    ctx.fillRect(x + w - 2, y + 1, 1, h - 2);
+    ctx.fillStyle = border;
+    ctx.fillRect(x + 2, y + 1, w - 4, 1);
+    ctx.fillRect(x + 2, y + h - 2, w - 4, 1);
+    ctx.fillRect(x + 1, y + 2, 1, h - 4);
+    ctx.fillRect(x + w - 2, y + 2, 1, h - 4);
+    ctx.fillStyle = '#0c0828';
+    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    ctx.fillStyle = '#342468';
+    ctx.fillRect(x + 3, y + 3, w - 6, 1);
+  }
+
+  // One ground tile: grass on top, earth that darkens with depth, and a dark
+  // outline wherever the ground meets open air.
+  function drawGround(px, py, tx, ty, isGround) {
+    let d = 0;
+    while (d < 7 && isGround(tx, ty - 1 - d)) d++;
+    const shade = d <= 2 ? 0 : d <= 4 ? 1 : d <= 6 ? 2 : 3;
+    ctx.drawImage(d === 0 ? TILES.grass : TILES.dirt[shade], px, py);
+    const side = (x) => {
+      if (d === 0) {
+        ctx.fillStyle = '#005800';
+        ctx.fillRect(x, py, 1, 5);
+        ctx.fillStyle = '#2c1400';
+        ctx.fillRect(x, py + 5, 1, 11);
+      } else {
+        ctx.fillStyle = '#2c1400';
+        ctx.fillRect(x, py, 1, 16);
+      }
+    };
+    if (!isGround(tx - 1, ty)) side(px);
+    if (!isGround(tx + 1, ty)) side(px + 15);
+    if (!isGround(tx, ty + 1)) {
+      ctx.fillStyle = '#2c1400';
+      ctx.fillRect(px, py + 15, 16, 1);
+    }
   }
 
   function makeMenu(items, y, spacing = 18) {
@@ -99,12 +134,12 @@
         this.items.forEach((it, i) => {
           const y = this.y + i * this.spacing;
           const sel = i === this.index;
-          drawTextOutlined(ctx, it.label, W / 2, y, sel ? PAL.y : PAL.w, 1, 'center');
+          drawTextOutlined(ctx, it.label, W / 2, y, sel ? PAL.c : '#b8c4f0', 1, 'center');
           if (sel) {
             const half = textWidth(it.label) / 2;
             const bob = blink(15) ? 0 : 1;
-            drawTextOutlined(ctx, '>', W / 2 - half - 12 + bob, y, PAL.y);
-            drawTextOutlined(ctx, '<', W / 2 + half + 7 - bob, y, PAL.y);
+            drawTextOutlined(ctx, '>', W / 2 - half - 12 + bob, y, PAL.w);
+            drawTextOutlined(ctx, '<', W / 2 + half + 7 - bob, y, PAL.w);
           }
         });
       },
@@ -112,37 +147,91 @@
   }
 
   function drawTitleBackdrop() {
-    drawBackground(ctx, frame * 0.25);
+    drawBackground(ctx, frame * 0.25, frame);
     // A cliff edge with our hero staring into the abyss.
-    for (let x = 0; x < 6; x++) {
-      for (let y = 12; y < 17; y++) ctx.drawImage(y === 12 ? TILES.grass : TILES.dirt, x * T, y * T);
-    }
+    const cliff = (x, y) => x >= 0 && x < 6 && y >= 12;
+    for (let x = 0; x < 6; x++) for (let y = 12; y < 17; y++) drawGround(x * T, y * T, x, y, cliff);
+    ctx.drawImage(DECO.pine, 17, 12 * T - 25);
+    ctx.drawImage(DECO.bush, 3 * T + 1, 12 * T - 6);
+    ctx.drawImage(DECO.tuft, 6, 12 * T - 3);
+    ctx.drawImage(DECO.tuft, 2 * T + 9, 12 * T - 3);
+    ctx.drawImage(DECO.flowers[0], 4 * T + 10, 12 * T - 4);
+    ctx.drawImage(DECO.rock, 2 * T + 1, 12 * T - 3);
     ctx.drawImage(PLAYER_SPR.dash.idle.right, 6 * T - 13, 12 * T - 16);
-    // ...and sometimes, something watching back from the far ridge.
-    const w = frame % 720;
-    if (w > 480 && w < 600 && (w < 490 || w > 590 ? w % 4 < 2 : true)) {
-      ctx.drawImage(WATCHER_SPR.left, 392, 186);
+
+    // Storm: lightning every 10 seconds; the Watcher is only seen in its light.
+    const storm = frame % 600;
+    if (storm < 110 && (storm < 90 || storm % 4 < 2)) ctx.drawImage(WATCHER_SPR.left, 392, 186);
+    drawRain();
+    if (storm < 12) {
+      if (storm < 4 || (storm > 7 && storm < 10)) {
+        ctx.fillStyle = 'rgba(220,220,255,' + (storm < 4 ? 0.45 : 0.25) + ')';
+        ctx.fillRect(0, 0, W, H);
+      }
+      drawBolt(Math.floor(frame / 600));
     }
-    drawTinyText(ctx, 'ColdzeeYT', W / 2, H - 9, PAL.m);
+    drawTinyText(ctx, 'ColdzeeYT', W / 2, H - 9, '#6c7cc8');
+  }
+
+  // Animated rain: every drop's position is a pure function of the frame.
+  function drawRain() {
+    ctx.fillStyle = 'rgba(150,160,230,0.55)';
+    for (let i = 0; i < 140; i++) {
+      const sp = 4 + (decoRoll(i, 1) % 30) / 10;
+      const y = (decoRoll(i, 2) * 3 + frame * sp) % (H + 30) - 15;
+      const x = ((decoRoll(i, 3) * 5 - y * 0.3) % (W + 40) + W + 40) % (W + 40) - 20;
+      const len = 4 + (i % 3);
+      for (let k = 0; k < len; k++) ctx.fillRect(Math.round(x + k * 0.3), Math.round(y - k), 1, 1);
+    }
+    // splashes on the cliff top
+    ctx.fillStyle = '#a4b4fc';
+    for (let i = 0; i < 4; i++) {
+      const sx = (decoRoll(frame, i) * 7) % 96;
+      ctx.fillRect(sx, 12 * T - 1 - (frame + i) % 2, 1, 1);
+      ctx.fillRect(sx + 2, 12 * T - 2, 1, 1);
+    }
+  }
+
+  function drawBolt(seed) {
+    let x = 140 + (decoRoll(seed, 9) % 200);
+    ctx.fillStyle = '#fcfcfc';
+    for (let y = 0; y < 150; y += 6) {
+      const nx = x + ((decoRoll(seed * 31 + y, 4) % 9) - 4);
+      for (let k = 0; k < 6; k++) ctx.fillRect(Math.round(x + ((nx - x) * k) / 6), y + k, 1, 1);
+      x = nx;
+    }
+  }
+
+  // Shared per-frame logic for the title backdrop (thunder follows the flash).
+  function titleUpdate() {
+    if (frame % 600 === 25) Sound.sfx('thunder');
   }
 
   function drawLogo(y = 48) {
-    drawText(ctx, 'PRECIPICE', W / 2 + 3, y + 3, PAL.R, 3, 'center');
+    y += Math.round(Math.sin(frame / 45) * 1.5);
+    // Icy lettering: deep navy drop shadow, then white fading to sky blue.
+    drawText(ctx, 'PRECIPICE', W / 2 + 3, y + 3, '#0c1c5c', 3, 'center');
     drawTextOutlined(ctx, 'PRECIPICE', W / 2, y, PAL.w, 3, 'center');
-    // gold band across the lower half of the letters
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, y + 12, W, 9);
-    ctx.clip();
-    drawText(ctx, 'PRECIPICE', W / 2, y, PAL.y, 3, 'center');
-    ctx.restore();
-    drawText(ctx, '- HOW FAR WILL YOU CLIMB? -', W / 2, y + 30, PAL.C, 1, 'center');
+    const band = (top, h, col) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, y + top, W, h);
+      ctx.clip();
+      drawText(ctx, 'PRECIPICE', W / 2, y, col, 3, 'center');
+      ctx.restore();
+    };
+    band(6, 6, PAL.C);
+    band(12, 6, PAL.c);
+    band(18, 3, '#0078f8');
   }
 
   // ---------------------------------------------------------------- scenes
   let scene = null;
+  let fade = 0; // frames of fade-in left after a scene change
+  const FADE = 16;
   function setScene(s, ...args) {
     scene = s;
+    fade = FADE;
     if (s.enter) s.enter(...args);
   }
 
@@ -158,6 +247,7 @@
 
   const Splash = {
     update() {
+      titleUpdate();
       if (Input.any) {
         Sound.init();
         Sound.playMusic(true);
@@ -168,7 +258,7 @@
     draw() {
       drawTitleBackdrop();
       drawLogo();
-      if (blink()) drawTextOutlined(ctx, 'PRESS ANY KEY', W / 2, 140, PAL.w, 1, 'center');
+      if (blink()) drawTextOutlined(ctx, 'PRESS ANY KEY', W / 2, 140, PAL.C, 1, 'center');
     },
   };
 
@@ -176,27 +266,98 @@
     menu: makeMenu([
       { id: 'new', label: 'NEW GAME' },
       { id: 'tutorial', label: 'TUTORIAL' },
-      { id: 'scores', label: 'SCORES' },
-      { id: 'music', label: 'MUSIC' },
-      { id: 'source', label: 'SOURCE' },
       { id: 'settings', label: 'SETTINGS' },
       { id: 'credits', label: 'CREDITS' },
-    ], 102, 15),
+    ], 116, 17),
     update() {
+      titleUpdate();
       const c = this.menu.update();
       if (!c) return;
-      if (c.id === 'new') startLevel(LEVELS.stage1);
+      if (c.id === 'new') setScene(Story);
       else if (c.id === 'tutorial') startLevel(LEVELS.tutorial);
       else if (c.id === 'settings') setScene(Settings);
-      else if (c.id === 'scores') setScene(Scores);
-      else if (c.id === 'music') setScene(Music);
-      else if (c.id === 'source') setScene(Source);
       else if (c.id === 'credits') setScene(Credits);
     },
     draw() {
       drawTitleBackdrop();
       drawLogo();
+      ctx.fillStyle = 'rgba(8,6,28,0.6)';
+      ctx.fillRect(W / 2 - 64, 106, 128, 76);
+      ctx.fillStyle = '#342468';
+      ctx.fillRect(W / 2 - 64, 106, 128, 1);
+      ctx.fillRect(W / 2 - 64, 181, 128, 1);
       this.menu.draw();
+    },
+  };
+
+  // ---------------------------------------------------------------- backstory
+  const STORY = [
+    { text: 'THEY SAY THAT AT THE TOP OF MOUNT PRECIPICE\nBURNS THE EVERFLAME:\nA FIRE THAT GRANTS A SINGLE WISH.' },
+    { text: 'YEARS AGO, A CLIMBER NAMED ASH\nSET OUT TO FIND IT.\nASH NEVER CAME BACK DOWN.' },
+    { text: "LAST NIGHT, AT THE FOOT OF THE CLIFFS,\nYOU FOUND ASH'S RED CAP.\nIT FIT YOU PERFECTLY." },
+    { text: 'NOW YOU CLIMB.\nBUT SOMETHING UP THERE IS WAITING...\nAND IT KNOWS YOUR FACE.' },
+    { title: 'YOUR OBJECTIVE', text: "REACH THE SUMMIT AND FIND THE EVERFLAME.\nGATHER EMBERS ALONG THE WAY.\nFIND ASH'S MEMORIES TO LEARN THE TRUTH." },
+  ];
+  const TYPE_SPEED = 0.8; // characters per frame
+
+  const Story = {
+    enter() { this.page = 0; this.t = 0; },
+    update() {
+      this.t++;
+      if (hit('Escape')) { Sound.sfx('select'); startLevel(LEVELS.stage1); return; }
+      if (hit(...K.ok) || Input.mouse.click) {
+        const len = STORY[this.page].text.length;
+        if (this.t * TYPE_SPEED < len) { this.t = Math.ceil(len / TYPE_SPEED); return; }
+        this.page++;
+        this.t = 0;
+        if (this.page >= STORY.length) { Sound.sfx('select'); startLevel(LEVELS.stage1); } else Sound.sfx('move');
+      }
+    },
+    draw() {
+      drawBackground(ctx, frame * 0.1, frame);
+      // Mount Precipice, with the Everflame burning at its peak.
+      const peakX = W / 2, peakY = 40;
+      for (let x = peakX - 200; x <= peakX + 200; x += 3) {
+        const top = Math.round((peakY + Math.abs(x - peakX) * 0.9 + (decoRoll(x, 5) % 4)) / 3) * 3;
+        ctx.fillStyle = '#120a30';
+        ctx.fillRect(x, top, 3, H - top);
+        if (top < peakY + 34) {
+          ctx.fillStyle = '#6c5cac';
+          ctx.fillRect(x, top, 3, Math.min(6, peakY + 34 - top));
+        }
+      }
+      // stepped round glow that pulses
+      const glow = 9 + Math.round(Math.sin(frame / 10) * 2);
+      for (const [r, a] of [[glow + 8, 0.1], [glow + 2, 0.2], [glow - 4, 0.35]]) {
+        ctx.fillStyle = 'rgba(252,152,56,' + a + ')';
+        for (let j = -r; j <= r; j++) {
+          const half = Math.floor(Math.sqrt(r * r - j * j));
+          ctx.fillRect(peakX - half, peakY - 5 + j, half * 2 + 1, 1);
+        }
+      }
+      for (let i = 0; i < 28; i++) {
+        const h = decoRoll(frame >> 2, i + 20) % 13;
+        const spread = Math.max(1, 5 - (h >> 1));
+        const fx = peakX + ((decoRoll(frame >> 2, i) % (spread * 2 + 1)) - spread);
+        const fy = peakY - 1 - h;
+        ctx.fillStyle = i % 3 === 0 ? PAL.w : i % 3 === 1 ? PAL.y : '#fc9838';
+        ctx.fillRect(fx, fy, 1, 1);
+      }
+
+      const page = STORY[this.page];
+      if (!page) return;
+      const lines = page.text.split('\n');
+      panel(W / 2 - 170, 176, 340, 80, page.title ? PAL.y : '#fcfcfc');
+      let ty = 186;
+      if (page.title) { drawText(ctx, page.title, W / 2, ty, PAL.y, 1, 'center'); ty += 14; }
+      let budget = Math.floor(this.t * TYPE_SPEED);
+      lines.forEach((l, i) => {
+        drawText(ctx, l.slice(0, Math.max(0, budget)), W / 2 - textWidth(l) / 2, ty + i * 12, PAL.w);
+        budget -= l.length;
+      });
+      drawText(ctx, 'ESC: SKIP', W / 2 - 160, 244, PAL.n);
+      drawText(ctx, (this.page + 1) + '/' + STORY.length, W / 2, 244, PAL.n, 1, 'center');
+      if (budget >= 0 && blink(20)) drawText(ctx, 'ENTER >', W / 2 + 162, 244, PAL.y, 1, 'right');
     },
   };
 
@@ -204,6 +365,7 @@
   const Settings = {
     menu: makeMenu([{ id: 'back', label: 'BACK' }], 170),
     update() {
+      titleUpdate();
       const c = this.menu.update();
       if (c || hit(...K.back)) {
         if (!c) Sound.sfx('select');
@@ -213,7 +375,7 @@
     draw() {
       drawTitleBackdrop();
       panel(W / 2 - 80, 70, 160, 124);
-      drawTextOutlined(ctx, 'SETTINGS', W / 2, 84, PAL.y, 2, 'center');
+      drawTextOutlined(ctx, 'SETTINGS', W / 2, 84, PAL.C, 2, 'center');
       drawText(ctx, 'COMING SOON!', W / 2, 120, PAL.w, 1, 'center');
       drawText(ctx, 'VOLUME, CONTROLS AND', W / 2, 136, PAL.m, 1, 'center');
       drawText(ctx, 'MORE WILL LIVE HERE.', W / 2, 146, PAL.m, 1, 'center');
@@ -221,31 +383,11 @@
     },
   };
 
-  // Best results per level, kept in this browser.
-  const Best = {
-    key: 'precipice.best',
-    load() {
-      try { return JSON.parse(localStorage.getItem(this.key)) || {}; } catch (e) { return {}; }
-    },
-    record(id, run) {
-      const all = this.load();
-      const old = all[id];
-      all[id] = {
-        time: old ? Math.min(old.time, run.time) : run.time,
-        deaths: old ? Math.min(old.deaths, run.deaths) : run.deaths,
-        embers: old ? Math.max(old.embers, run.embers) : run.embers,
-        fragments: old ? Math.max(old.fragments, run.fragments) : run.fragments,
-        clears: (old ? old.clears : 0) + 1,
-      };
-      try { localStorage.setItem(this.key, JSON.stringify(all)); } catch (e) { /* storage unavailable */ }
-    },
-  };
-
-  // Shared layout for the simple title sub-screens (scores, music, credits).
-  function subScreen(title, h = 190) {
+  // Shared layout for simple title sub-screens (credits).
+  function subScreen(title, h = 210) {
     drawTitleBackdrop();
     panel(W / 2 - 150, (H - h) / 2, 300, h);
-    drawTextOutlined(ctx, title, W / 2, (H - h) / 2 + 12, PAL.y, 2, 'center');
+    drawTextOutlined(ctx, title, W / 2, (H - h) / 2 + 12, PAL.C, 2, 'center');
     return (H - h) / 2 + 42; // first content line
   }
   function backOnly(menu) {
@@ -258,104 +400,22 @@
     return false;
   }
 
-  const Scores = {
-    menu: makeMenu([{ id: 'back', label: 'BACK' }], 212),
-    update() { backOnly(this.menu); },
-    draw() {
-      let y = subScreen('BEST SCORES');
-      const best = Best.load();
-      for (const def of [LEVELS.tutorial, LEVELS.stage1]) {
-        const b = best[def.id];
-        drawText(ctx, def.name, W / 2, y, PAL.C, 1, 'center');
-        y += 12;
-        if (b) {
-          const L = buildLevel(def);
-          drawText(ctx, 'TIME ' + formatTime(b.time) + '   DEATHS ' + b.deaths, W / 2, y, PAL.w, 1, 'center');
-          y += 10;
-          drawText(ctx, 'EMBERS ' + b.embers + '/' + L.embers.length + '   MEMORIES ' + b.fragments + '/' + L.fragments.length, W / 2, y, PAL.m, 1, 'center');
-        } else {
-          drawText(ctx, 'NOT CLEARED YET', W / 2, y, PAL.m, 1, 'center');
-          y += 10;
-        }
-        y += 18;
-      }
-      this.menu.draw();
-    },
-  };
-
-  // Download the soundtrack.
-  function download(url) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'Precipice OST - ' + url.split('/').pop();
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-
-  const Music = {
-    menu: makeMenu(TRACK_NAMES.map((n, i) => ({ id: i, label: n }))
-      .concat([{ id: 'all', label: 'DOWNLOAD ALL' }, { id: 'back', label: 'BACK' }]), 130),
-    enter() { this.menu.index = 0; this.note = 0; },
-    update() {
-      if (this.note > 0) this.note--;
-      const c = this.menu.update();
-      if ((c && c.id === 'back') || (!c && hit(...K.back))) {
-        if (!c) Sound.sfx('select');
-        setScene(Title);
-        return;
-      }
-      if (!c) return;
-      if (c.id === 'all') TITLE_TRACKS.forEach((url, i) => setTimeout(() => download(url), i * 400));
-      else download(TITLE_TRACKS[c.id]);
-      this.note = 150;
-    },
-    draw() {
-      const y = subScreen('MUSIC - OST');
-      drawText(ctx, 'DOWNLOAD THE SOUNDTRACK', W / 2, y, PAL.m, 1, 'center');
-      drawText(ctx, 'NOW PLAYING: ' + TRACK_NAMES[Sound.track], W / 2, y + 14, PAL.C, 1, 'center');
-      if (this.note) drawText(ctx, 'DOWNLOADING...', W / 2, 206, PAL.G, 1, 'center');
-      this.menu.draw();
-    },
-  };
-
-  const SOURCE_URL = 'https://github.com/coldzeeyt/game';
-  const Source = {
-    menu: makeMenu([{ id: 'open', label: 'OPEN IN BROWSER' }, { id: 'back', label: 'BACK' }], 160),
-    enter() { this.menu.index = 0; },
-    update() {
-      const c = this.menu.update();
-      if ((c && c.id === 'back') || (!c && hit(...K.back))) {
-        if (!c) Sound.sfx('select');
-        setScene(Title);
-      } else if (c) {
-        window.open(SOURCE_URL, '_blank', 'noopener');
-      }
-    },
-    draw() {
-      const y = subScreen('SOURCE CODE');
-      drawText(ctx, 'PRECIPICE IS OPEN SOURCE!', W / 2, y, PAL.w, 1, 'center');
-      drawText(ctx, 'GITHUB.COM/COLDZEEYT/GAME', W / 2, y + 18, PAL.C, 1, 'center');
-      this.menu.draw();
-    },
-  };
-
   const Credits = {
     menu: makeMenu([{ id: 'back', label: 'BACK' }], 212),
-    update() { backOnly(this.menu); },
+    update() { titleUpdate(); backOnly(this.menu); },
     draw() {
       let y = subScreen('CREDITS');
       const rows = [
         ['GAME & DESIGN', 'ColdzeeYT'],
-        ['MUSIC', 'SILVER HAND MAN / DREAM GIRL'],
+        ['MUSIC', 'SILVER HAND MAN - VIRAXOR', 'DREAM GIRL - SHARK-POOL'],
         ['SOUND EFFECTS', '8-BIT SYNTH (WEB AUDIO)'],
         ['ART', 'PLACEHOLDER PIXEL ART'],
         ['SOURCE', 'GITHUB.COM/COLDZEEYT/GAME'],
       ];
-      for (const [head, body] of rows) {
-        drawText(ctx, head, W / 2, y, PAL.y, 1, 'center');
-        drawText(ctx, body, W / 2, y + 10, PAL.w, 1, 'center');
-        y += 24;
+      for (const [head, ...lines] of rows) {
+        drawText(ctx, head, W / 2, y, PAL.c, 1, 'center');
+        lines.forEach((l, i) => drawText(ctx, l, W / 2, y + 10 + i * 10, PAL.w, 1, 'center'));
+        y += 13 + lines.length * 10;
       }
       this.menu.draw();
     },
@@ -397,7 +457,16 @@
       this.trail = [];
       this.intro = 150;
       this.message = null; // mystery text shown at the bottom of the screen
-      this.pauseMenu = makeMenu([{ id: 'resume', label: 'RESUME' }, { id: 'quit', label: 'QUIT TO TITLE' }], 136);
+      // Columns with gameplay objects get no tall decorations (keeps things readable).
+      const L0 = this.level;
+      this.decoBlock = new Set();
+      for (const o of [...L0.signs, ...L0.checkpoints, ...L0.springs, ...L0.fragments, ...L0.watchers]) this.decoBlock.add(o.x);
+      if (L0.flag) [-1, 0, 1].forEach((d) => this.decoBlock.add(L0.flag.x + d));
+      // Drifting dust / snow in front of the background.
+      this.motes = Array.from({ length: 36 }, () => ({
+        x: Math.random() * W, y: Math.random() * H, v: 0.15 + Math.random() * 0.3, p: Math.random() * 6.28,
+      }));
+      this.pauseMenu = makeMenu([{ id: 'resume', label: 'RESUME' }, { id: 'quit', label: 'QUIT TO TITLE' }], 140);
     },
 
     // --- tile queries
@@ -549,6 +618,11 @@
       }
       for (let i = this.trail.length - 1; i >= 0; i--) if (--this.trail[i].life <= 0) this.trail.splice(i, 1);
       if (this.shake > 0) this.shake--;
+      for (const m of this.motes) {
+        m.y += m.v;
+        m.x += Math.sin(frame / 50 + m.p) * 0.2;
+        if (m.y > H) { m.y = -2; m.x = Math.random() * W; }
+      }
       for (const wt of this.level.watchers) {
         if (!wt.fade || wt.gone) continue;
         if (++wt.fade > 40) {
@@ -739,11 +813,6 @@
       const f = L.flag;
       if (f && overlap(p, { x: f.x * T + 4, y: (f.y - 3) * T, w: 8, h: 4 * T })) {
         this.state = 'clear';
-        Best.record(L.id, {
-          time: this.time, deaths: this.deaths,
-          embers: L.embers.filter((e) => e.got).length,
-          fragments: L.fragments.filter((fr) => fr.got).length,
-        });
         this.clearT = 0;
         p.vx = 0;
         this.burst(f.x * T + 8, (f.y - 3) * T, [PAL.y, PAL.w, PAL.G, PAL.c], 24, 2.5);
@@ -763,23 +832,25 @@
       const sx = this.shake ? Math.round((Math.random() - 0.5) * this.shake) : 0;
       const sy = this.shake ? Math.round((Math.random() - 0.5) * this.shake) : 0;
       const cx = Math.round(this.cam);
-      drawBackground(ctx, cx);
+      drawBackground(ctx, cx, frame);
+      ctx.fillStyle = '#4c3c8c';
+      for (const m of this.motes) {
+        const mx = (((m.x - cx * 0.6) % W) + W) % W;
+        ctx.fillRect(Math.round(mx), Math.round(m.y), 1, 1);
+      }
 
       ctx.save();
       ctx.translate(-cx + sx, sy);
 
       // tiles
+      const isGround = (x, y) => y >= L.h || this.tileAt(x, y) === '#';
       const tx0 = Math.floor(cx / T) - 1;
       for (let ty = 0; ty < L.h; ty++) {
         for (let tx = tx0; tx <= tx0 + Math.ceil(W / T) + 1; tx++) {
           const t = this.tileAt(tx, ty);
           if (t === '.') continue;
           const px = tx * T, py = ty * T;
-          if (t === '#') {
-            const above = this.tileAt(tx, ty - 1);
-            const img = above === '#' ? TILES.dirt : TILES.grass;
-            ctx.drawImage(img, px, py);
-          } else if (t === '=') ctx.drawImage(TILES.brick, px, py);
+          if (t === '#') drawGround(px, py, tx, ty, isGround); else if (t === '=') ctx.drawImage(TILES.brick, px, py);
           else if (t === '^') ctx.drawImage(TILES.spike, px, py);
           else if (t === 'c') {
             const c = this.crumbles.get(tx + ',' + ty);
@@ -794,6 +865,15 @@
               ctx.drawImage(TILES.crumble, px + jig, py);
             }
           }
+        }
+      }
+
+      // decorations on grass tops and roots under overhangs
+      for (let ty = 0; ty < L.h; ty++) {
+        for (let tx = tx0; tx <= tx0 + Math.ceil(W / T) + 1; tx++) {
+          if (this.tileAt(tx, ty) !== '#') continue;
+          if (ty > 0 && this.tileAt(tx, ty - 1) === '.') this.drawDeco(tx, ty);
+          if (ty + 1 < L.h && this.tileAt(tx, ty + 1) === '.') this.drawRoots(tx, ty);
         }
       }
 
@@ -850,9 +930,32 @@
       if (this.intro > 0 && this.state === 'play') {
         const y = this.intro > 130 ? 100 - (this.intro - 130) * 3 : 100;
         drawTextOutlined(ctx, this.level.name, W / 2, y, PAL.y, 2, 'center');
+        if (this.level.objective) drawTextOutlined(ctx, 'OBJECTIVE: ' + this.level.objective, W / 2, y + 22, PAL.C, 1, 'center');
       }
       if (this.state === 'paused') this.drawPause();
       if (this.state === 'clear') this.drawClear();
+    },
+
+    drawDeco(tx, ty) {
+      const px = tx * T, py = ty * T;
+      const r = decoRoll(tx, ty);
+      const tall = !this.decoBlock.has(tx) && this.tileAt(tx, ty - 2) === '.';
+      if (r < 7 && tall) ctx.drawImage(DECO.pine, px + 1, py - 25);
+      else if (r < 15 && tall) ctx.drawImage(DECO.bush, px + 2, py - 6);
+      else if (r < 25) ctx.drawImage(DECO.rock, px + (r % 9), py - 3);
+      else if (r < 40) ctx.drawImage(DECO.flowers[r % 4], px + (r % 13), py - 4);
+      if (decoRoll(tx, ty + 7) < 45) ctx.drawImage(DECO.tuft, px + (decoRoll(tx, ty + 11) % 11), py - 3);
+    },
+
+    drawRoots(tx, ty) {
+      const r = decoRoll(tx, ty + 3);
+      if (r > 60) return;
+      const px = tx * T, py = ty * T + 16;
+      ctx.fillStyle = '#4c2c10';
+      ctx.fillRect(px + 3 + (r % 5), py, 1, 3 + (r % 4));
+      ctx.fillRect(px + 11, py, 1, 2 + (r % 3));
+      ctx.fillStyle = PAL.q;
+      ctx.fillRect(px + 3 + (r % 5), py + 3 + (r % 4), 1, 1);
     },
 
     drawMover(m) {
@@ -972,7 +1075,8 @@
     drawPause() {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, 0, W, H);
-      drawTextOutlined(ctx, 'PAUSED', W / 2, 100, PAL.y, 2, 'center');
+      drawTextOutlined(ctx, 'PAUSED', W / 2, 90, PAL.y, 2, 'center');
+      if (this.level.objective) drawTextOutlined(ctx, 'OBJECTIVE: ' + this.level.objective, W / 2, 114, PAL.C, 1, 'center');
       this.pauseMenu.draw();
     },
 
@@ -1015,6 +1119,7 @@
     while (acc >= STEP) {
       scene.update();
       frame++;
+      if (fade > 0) fade--;
       Input.pressed.clear();
       Input.mouse.click = false;
       Input.mouse.moved = false;
@@ -1022,11 +1127,15 @@
       acc -= STEP;
     }
     scene.draw();
+    if (fade > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,' + fade / FADE + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
     requestAnimationFrame(loop);
   }
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { Splash, Title, Settings, Play }, get scene() { return scene; } };
+  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { Splash, Title, Settings, Play }, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   setScene(Splash);
   requestAnimationFrame(loop);

@@ -101,23 +101,91 @@ const FRAGMENT_SPR = spriteFromRows([
   'nmmmmmmmmmmn',
 ]);
 
-// ---------- Tiles (kept deliberately simple) ----------
-function makeTile(kind) {
+// ---------- Decorations ----------
+PAL.q = '#005800';
+const DECO = (() => {
+  const tuft = spriteFromRows(['..G..', 'G.g.G', 'gGgGg']);
+  const flowerRows = ['.r.', 'ryr', '.g.', '.g.'];
+  const flowers = [
+    spriteFromRows(flowerRows),
+    spriteFromRows(flowerRows.map((r) => r.replace(/r/g, 'y').replace('ryr', 'ywy').replace(/yyy/, 'ywy'))),
+    spriteFromRows(flowerRows.map((r) => r.replace(/r/g, 'w'))),
+    spriteFromRows(flowerRows.map((r) => r.replace(/r/g, 'v'))),
+  ];
+  const rock = spriteFromRows(['..nmm..', '.nmllm.', 'nmmmlmn', 'nnnnnnn']);
+  const bush = spriteFromRows([
+    '....qqqq....',
+    '..qqggggqq..',
+    '.qgGGgggggq.',
+    'qgGggggGgggq',
+    'qggggGggggGq',
+    'qggggggggggq',
+    '.qqqqqqqqqq.',
+  ]);
+  const pine = (() => {
+    const c = makeCanvas(13, 26);
+    const x = c.getContext('2d');
+    x.fillStyle = '#503000';
+    x.fillRect(5, 20, 3, 6);
+    for (let k = 0; k < 3; k++) {
+      for (let j = 0; j < 10; j++) {
+        const half = Math.min(6, Math.floor(j * 0.55) + k);
+        const y = k * 6 + j;
+        x.fillStyle = '#0c4c28';
+        x.fillRect(6 - half, y, half * 2 + 1, 1);
+        x.fillStyle = '#1c7c38';
+        x.fillRect(6 - half, y, Math.max(1, half - 1), 1);
+      }
+      x.fillStyle = '#04280c';
+      x.fillRect(0, k * 6 + 9, 13, 1);
+      x.clearRect(0, k * 6 + 9, 6 - Math.min(6, 4 + k), 1);
+      x.clearRect(7 + Math.min(6, 4 + k), k * 6 + 9, 13, 1);
+    }
+    x.fillStyle = PAL.G;
+    x.fillRect(6, 0, 1, 1);
+    return c;
+  })();
+  return { tuft, flowers, rock, bush, pine };
+})();
+
+// Deterministic 0..99 roll for a tile column (so decorations never flicker).
+function decoRoll(tx, salt = 0) {
+  return (Math.imul(tx * 31 + salt, 2654435761) >>> 0) % 100;
+}
+
+// ---------- Tiles ----------
+// Earth gets darker the deeper it goes, so cliffs fade into the abyss.
+const EARTH = [
+  { base: '#ac7c00', spot: '#7c5000' },
+  { base: '#8c5c00', spot: '#643c00' },
+  { base: '#6c4000', spot: '#4c2800' },
+  { base: '#4c2c10', spot: '#341c08' },
+];
+
+function makeTile(kind, shade = 0) {
   const c = makeCanvas(16, 16);
   const x = c.getContext('2d');
   const rect = (col, i, j, w, h) => { x.fillStyle = col; x.fillRect(i, j, w, h); };
 
   if (kind === 'dirt' || kind === 'grass') {
-    rect(PAL.d, 0, 0, 16, 16);
-    // a few evenly spaced pebbles
-    for (const [i, j] of [[3, 5], [11, 3], [7, 10], [13, 12], [2, 13]]) rect(PAL.D, i, j, 2, 1);
+    const e = EARTH[shade];
+    rect(e.base, 0, 0, 16, 16);
+    // a few evenly spaced pebbles with a highlight
+    for (const [i, j] of [[3, 6], [11, 3], [7, 11], [13, 12], [1, 14]]) {
+      rect(e.spot, i, j, 2, 1);
+      if (shade === 0) rect('#c89c30', i, j - 1, 1, 1);
+    }
     if (kind === 'grass') {
+      rect('#6c4400', 0, 5, 16, 1); // shadow under the grass lip
       rect(PAL.g, 0, 0, 16, 4);
       rect(PAL.G, 0, 0, 16, 1);
-      for (let i = 1; i < 16; i += 4) rect(PAL.g, i, 4, 2, 1);
+      for (let i = 0; i < 16; i += 4) { rect(PAL.g, i + 1, 4, 2, 1); rect('#b8f818', i + 2, 1, 1, 1); }
+      rect('#005800', 0, 3, 16, 1);
+      for (let i = 0; i < 16; i += 4) rect(PAL.g, i + 1, 3, 2, 1);
     }
   } else if (kind === 'brick') {
     rect(PAL.m, 0, 0, 16, 16);
+    rect(PAL.l, 0, 0, 16, 1);
     rect(PAL.n, 0, 7, 16, 1);
     rect(PAL.n, 0, 15, 16, 1);
     rect(PAL.n, 7, 0, 1, 7);
@@ -126,6 +194,7 @@ function makeTile(kind) {
   } else if (kind === 'crumble') {
     rect('#c84c0c', 0, 0, 16, 16);
     rect('#fc9838', 0, 0, 16, 1);
+    rect('#fc9838', 0, 0, 1, 16);
     rect('#7c2c00', 0, 15, 16, 1);
     rect('#7c2c00', 15, 0, 1, 16);
     for (const [i, j] of [[4, 3], [5, 4], [6, 5], [6, 6], [10, 8], [9, 9], [9, 10], [4, 11], [5, 12]]) rect('#502000', i, j, 1, 1);
@@ -134,16 +203,18 @@ function makeTile(kind) {
       const x0 = s * 8;
       for (let j = 0; j < 8; j++) {
         const half = Math.floor(j / 2);
-        rect(PAL.l, x0 + 3 - half, 8 + j, 2 + half * 2, 1);
+        rect(PAL.w, x0 + 3 - half, 8 + j, 1 + half, 1); // lit side
+        rect(PAL.m, x0 + 4, 8 + j, 1 + half, 1); // shaded side
       }
     }
+    rect(PAL.n, 0, 15, 16, 1);
   }
   return c;
 }
 
 const TILES = {
   grass: makeTile('grass'),
-  dirt: makeTile('dirt'),
+  dirt: [0, 1, 2, 3].map((d) => makeTile('dirt', d)),
   brick: makeTile('brick'),
   crumble: makeTile('crumble'),
   spike: makeTile('spike'),
@@ -173,48 +244,82 @@ function makeCheckpoint(active) {
 }
 const CHECKPOINT_SPR = { off: makeCheckpoint(false), on: makeCheckpoint(true) };
 
-// ---------- Background (flat, simple parallax that wraps every 512px) ----------
+// ---------- Background (layered parallax that wraps every 512px) ----------
 const SCREEN_W = 480;
 const SCREEN_H = 270;
+const MOON = { x: 420, y: 44 };
 
 const BG = (() => {
   const sky = makeCanvas(SCREEN_W, SCREEN_H);
   const s = sky.getContext('2d');
-  s.fillStyle = '#0c0828';
-  s.fillRect(0, 0, SCREEN_W, SCREEN_H);
-  s.fillStyle = '#1c1048';
-  s.fillRect(0, 110, SCREEN_W, SCREEN_H - 110);
+  // flat 8-bit sky bands
+  [[0, '#08061c'], [50, '#0c0828'], [95, '#140c3c'], [140, '#1e1250'], [185, '#2a1a64']].forEach(([y, col]) => {
+    s.fillStyle = col;
+    s.fillRect(0, y, SCREEN_W, SCREEN_H - y);
+  });
+  // moon with a stepped glow
+  const disc = (r, col) => {
+    s.fillStyle = col;
+    for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r) s.fillRect(MOON.x + i, MOON.y + j, 1, 1);
+  };
+  disc(26, '#161040');
+  disc(18, '#221a58');
+  disc(11, '#fce0a8');
+  s.fillStyle = '#e8c890';
+  [[-4, -3], [-5, -2], [3, 4], [4, 4], [3, 5], [5, -5], [-2, 6]].forEach(([i, j]) => s.fillRect(MOON.x + i, MOON.y + j, 1, 1));
   const r = rng(99);
   s.fillStyle = PAL.w;
-  for (let i = 0; i < 40; i++) s.fillRect((r() * SCREEN_W) | 0, (r() * 120) | 0, 1, 1);
-  // moon
-  s.fillStyle = '#fce0a8';
-  for (let j = -9; j <= 9; j++) for (let i = -9; i <= 9; i++) if (i * i + j * j <= 81) s.fillRect(430 + i, 30 + j, 1, 1);
+  for (let i = 0; i < 50; i++) s.fillRect((r() * SCREEN_W) | 0, (r() * 150) | 0, 1, 1);
 
-  const layer = (base, amps, color) => {
+  const layer = (base, amps, color, snow) => {
     const c = makeCanvas(512, SCREEN_H);
     const x = c.getContext('2d');
-    x.fillStyle = color;
     for (let i = 0; i < 512; i += 2) {
       let h = base;
       amps.forEach(([a, f, p]) => { h += a * Math.sin((2 * Math.PI * i * f) / 512 + p); });
-      h = Math.round(h / 4) * 4; // chunky steps
+      h = Math.round(h / 3) * 3; // chunky steps
+      x.fillStyle = color;
       x.fillRect(i, h, 2, SCREEN_H - h);
+      if (snow && h < base - 8) {
+        x.fillStyle = snow;
+        x.fillRect(i, h, 2, Math.min(6, base - 8 - h));
+      }
     }
     return c;
   };
+  // twinkling stars (drawn live)
+  const tw = [];
+  for (let i = 0; i < 14; i++) tw.push({ x: (r() * SCREEN_W) | 0, y: (r() * 130) | 0, p: (r() * 120) | 0 });
   return {
     sky,
-    far: layer(140, [[30, 2, 0], [12, 5, 1]], '#2c1c5c'),
-    near: layer(205, [[16, 3, 0.5], [8, 7, 0]], '#140c30'),
+    twinkle: tw,
+    far: layer(150, [[34, 2, 0], [14, 5, 1], [5, 13, 2]], '#2c1c5c', '#6c5cac'),
+    mid: layer(185, [[20, 3, 2], [9, 7, 0.4]], '#211448'),
+    near: layer(215, [[14, 3, 0.5], [7, 9, 0]], '#140c30'),
   };
 })();
 
-function drawBackground(ctx, camX) {
+function drawBackground(ctx, camX, t = 0) {
   ctx.drawImage(BG.sky, 0, 0);
-  for (const [img, p] of [[BG.far, 0.15], [BG.near, 0.4]]) {
+  for (const s of BG.twinkle) {
+    const k = (t + s.p) % 120;
+    if (k < 40) {
+      ctx.fillStyle = k < 20 ? PAL.w : PAL.C;
+      ctx.fillRect(s.x, s.y, 1, 1);
+      if (k > 8 && k < 14) { ctx.fillRect(s.x - 1, s.y, 3, 1); ctx.fillRect(s.x, s.y - 1, 1, 3); }
+    }
+  }
+  const layers = [[BG.far, 0.1], [BG.mid, 0.25], [BG.near, 0.45]];
+  layers.forEach(([img, p], i) => {
     const off = -Math.floor((camX * p) % 512);
     ctx.drawImage(img, off, 0);
     ctx.drawImage(img, off + 512, 0);
-  }
+    if (i === 0) {
+      // drifting mist between the far and middle ranges
+      ctx.fillStyle = 'rgba(160,140,230,0.07)';
+      const m = Math.floor(t / 4 + camX * 0.18) % 64;
+      for (let k = 0, x = -m; x < SCREEN_W; k++, x += 64) ctx.fillRect(x, 176 + (k % 2) * 3, 48, 9);
+      ctx.fillRect(0, 186, SCREEN_W, 6);
+    }
+  });
 }

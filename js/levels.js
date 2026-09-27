@@ -13,7 +13,7 @@ const OFF = ROWS - 15;
 function buildLevel(def) {
   const tiles = Array.from({ length: ROWS }, () => Array(def.width).fill('.'));
   const L = {
-    name: def.name, id: def.id, w: def.width, h: ROWS, tiles,
+    name: def.name, id: def.id, objective: def.objective, w: def.width, h: ROWS, tiles,
     start: { x: 2, y: 12 }, signs: [], checkpoints: [], springs: [],
     crystals: [], embers: [], movers: [], flag: null,
     fragments: [], watchers: [], secret: def.secret || null,
@@ -52,6 +52,7 @@ const LEVELS = {
   tutorial: {
     id: 'tutorial',
     name: 'TUTORIAL',
+    objective: 'LEARN THE ROPES, THEN REACH THE FLAG',
     width: 162,
     build(b) {
       // --- Moving & jumping ---
@@ -116,6 +117,7 @@ const LEVELS = {
   stage1: {
     id: 'stage1',
     name: 'STAGE 1 - THE EDGE',
+    objective: 'CLIMB TO THE FLAG ON THE CLIFF TOP',
     width: 166,
     secret: 'THE SHADOW SMILES.\nTHE MOUNTAIN REMEMBERS YOU.',
     build(b) {
