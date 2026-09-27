@@ -116,6 +116,12 @@ left by the very first climber in Act II.
 Something that wears your face appears ahead of you on the cliffs and vanishes when you
 approach. Collect every fragment in a stage to see what it has to say.
 
+## The ending
+
+Beating the Hollow (10-B) shows the true ending, then the **credits roll**: the credits,
+special thanks (Celeste, Geometry Dash platformer mode, Newgrounds), a note from the dev,
+and a last little scene of Ash at a campfire. Hold any key to speed it up, Esc to skip.
+
 ## Saving
 
 There are **3 save slots**. Touching a checkpoint, finishing a stage and quitting to the title

@@ -753,8 +753,116 @@
   const Guide = makeBook(GUIDE);
   const Lore = makeBook(LORE);
 
+  // Scrolling credits and thanks, after the true ending (Act II).
+  const CreditsRoll = {
+    enter(run) {
+      this.run = run;
+      this.y = H + 10; // top of the roll, scrolling up
+      const L = [];
+      const add = (text, color, scale = 1, gap = 12) => L.push({ text, color, scale, gap });
+      add('PRECIPICE', PAL.C, 3, 40);
+      add('A GAME BY ColdzeeYT', PAL.w, 1, 36);
+      for (const [head, ...names] of CREDITS_ROWS) {
+        add(head, PAL.c, 1, 12);
+        names.forEach((n, i) => add(n, PAL.w, 1, i === names.length - 1 ? 28 : 12));
+      }
+      add('SPECIAL THANKS', PAL.y, 2, 26);
+      add('CELESTE', PAL.w, 1, 14);
+      add('GEOMETRY DASH (PLATFORMER MODE)', PAL.w, 1, 14);
+      add('NEWGROUNDS', PAL.w, 1, 40);
+      add('A NOTE FROM THE DEV', PAL.y, 2, 26);
+      add('HOLY CRAP YOU PLAYED MY GAME!?!? WOW.', PAL.w, 1, 14);
+      add('I HOPE YOU ENJOYED AND GG.', PAL.w, 1, 16);
+      add('- ColdzeeYT', PAL.C, 1, 70);
+      add('THANKS FOR PLAYING', PAL.y, 2, 0);
+      this.lines = L;
+      this.height = L.reduce((h, l) => h + l.gap, 0);
+      this.done = false;
+      this.t = 0;
+    },
+    finish() {
+      Sound.sfx('select');
+      if (this.run) setScene(Ending, this.run, true); else setScene(Title);
+    },
+    update() {
+      this.t++;
+      if (hit('Escape')) { this.finish(); return; }
+      // the last line stops in the middle of the screen
+      const stop = H / 2 - 8 - this.height;
+      const speed = Input.down.size > 0 ? 2 : 0.35; // hold any key or button to speed up
+      if (this.y > stop) this.y = Math.max(stop, this.y - speed);
+      else if (!this.done) { this.done = true; this.t = 0; }
+      if (this.done && this.t > 240 && (hit(...K.ok) || Input.mouse.click)) this.finish(); // let Ash's scene play
+    },
+    draw() {
+      drawBackground(ctx, frame * 0.15, frame);
+      ctx.fillStyle = 'rgba(8,6,28,0.55)';
+      ctx.fillRect(0, 0, W, H);
+      let y = this.y;
+      for (const l of this.lines) {
+        if (y > -30 && y < H + 10) drawTextOutlined(ctx, l.text, W / 2, Math.round(y), l.color, l.scale, 'center');
+        y += l.gap;
+      }
+      if (this.done) {
+        this.drawAsh();
+        if (this.t > 240 && blink(20)) drawText(ctx, 'PRESS ENTER', W - 8, 6, PAL.m, 1, 'right');
+      } else drawText(ctx, 'HOLD ANY KEY: FASTER   ESC: SKIP', W - 8, 6, PAL.n, 1, 'right');
+    },
+
+    // After the credits: Ash, home at last, walks up to a campfire, warms up and waves.
+    drawAsh() {
+      const t = this.t, gy = H - 34; // ground line
+      ctx.globalAlpha = Math.min(1, t / 40);
+      ctx.fillStyle = '#1c3c14'; ctx.fillRect(0, gy, W, 2);
+      ctx.fillStyle = '#342414'; ctx.fillRect(0, gy + 2, W, H - gy - 2);
+      for (let x = 3; x < W; x += 7 + (decoRoll(x, 3) % 5)) { ctx.fillStyle = '#2c5c1c'; ctx.fillRect(x, gy - 1 - (decoRoll(x, 4) % 2), 1, 2); }
+      // campfire: logs, stepped glow, flickering flames
+      const fx = W / 2 - 20;
+      const glow = 14 + Math.round(Math.sin(frame / 9) * 2);
+      for (const [r, al] of [[glow + 10, 0.08], [glow + 4, 0.14], [glow - 3, 0.22]]) {
+        ctx.fillStyle = 'rgba(252,152,56,' + al + ')';
+        for (let j = -r; j <= 0; j++) { const h = Math.floor(Math.sqrt(r * r - j * j)); ctx.fillRect(fx - h, gy + j, h * 2 + 1, 1); }
+      }
+      ctx.fillStyle = '#503000'; ctx.fillRect(fx - 7, gy - 3, 14, 3);
+      ctx.fillStyle = '#7c5000'; ctx.fillRect(fx - 5, gy - 5, 10, 2);
+      for (let i = 0; i < 18; i++) {
+        const h = decoRoll(frame >> 2, i + 40) % 11;
+        const spread = Math.max(1, 5 - (h >> 1));
+        ctx.fillStyle = i % 3 === 0 ? PAL.w : i % 3 === 1 ? PAL.y : '#fc9838';
+        ctx.fillRect(fx + (decoRoll(frame >> 2, i + 70) % (spread * 2 + 1)) - spread, gy - 6 - h, 1, 1);
+      }
+      // Ash walks in from the right, then stops by the fire
+      const stopX = fx + 14, speed = 1.2;
+      const x = Math.max(stopX, W + 10 - t * speed);
+      const walking = x > stopX;
+      const since = t - (W + 10 - stopX) / speed; // frames since Ash reached the fire
+      const waving = !walking && since > 60 && since < 200; // turns to wave at you, then back to the fire
+      const spr = PLAYER_SPR.dash[walking ? ((t >> 3) % 2 ? 'walk1' : 'walk2') : 'idle'][waving ? 'right' : 'left'];
+      const ax = Math.round(x), ay = gy - spr.height;
+      ctx.drawImage(spr, ax, ay);
+      if (!walking) {
+        if (waving) {
+          // a wave: a raised hand bobbing beside the head
+          const up = (since >> 3) % 2;
+          ctx.fillStyle = '#fcbcb0'; ctx.fillRect(ax + 11, ay + 3 - up * 2, 2, 2);
+          ctx.fillStyle = '#d82800'; ctx.fillRect(ax + 11, ay + 5 - up * 2, 2, 3);
+        }
+        if (since > 90) drawText(ctx, 'ASH MADE IT HOME, TOO.', W / 2, gy + 14, PAL.V, 1, 'center');
+      }
+      ctx.globalAlpha = 1;
+    },
+  };
+
   // What's new, newest first (Credits > Changelog).
   const CHANGELOG = [
+    { title: 'UPDATE 1.7', text: [
+      'THE CREDITS ROLL', '',
+      '- SCROLLING CREDITS AND THANKS AFTER',
+      '  THE TRUE ENDING, WITH A NOTE FROM THE DEV',
+      '- AND A LITTLE SCENE WITH ASH AT THE END',
+      '- THE CHANGELOG MOVED INTO CREDITS',
+      '- EVERY UPDATE IS IN THE CHANGELOG NOW',
+    ] },
     { title: 'UPDATE 1.6', text: [
       'PLATFORMS & ACCOUNTS', '',
       '- ACCOUNTS: SIGN UP, LOG IN, AND SAVE OR LOAD',
@@ -1164,16 +1272,16 @@
     ],
   };
   const Ending = {
-    enter(run) {
+    enter(run, summary) {
       this.run = run;
       this.act = run.data.stage > ACT2_START || run.data.done ? 2 : 1;
       this.pages = ENDINGS[this.act];
-      this.page = 0;
-      this.t = 0;
+      this.page = summary ? this.pages.length : 0; // back from the credits roll: straight to the summary
+      this.t = summary ? 40 : 0;
       this.menu = makeMenu(this.act === 1
         ? [{ id: 'story', label: 'CONTINUE THE STORY (50 MORE STAGES)' }, { id: 'credits', label: 'CREDITS' }, { id: 'title', label: 'BACK TO TITLE' }]
         : [{ id: 'credits', label: 'CREDITS' }, { id: 'title', label: 'BACK TO TITLE' }], 222, 12);
-      Sound.playMusic(true);
+      Sound.playMusic(!summary); // keep the song going after the credits roll
     },
     update() {
       this.t++;
@@ -1182,6 +1290,7 @@
         const c = this.menu.update();
         if (!c) return;
         if (c.id === 'story') playSlot(this.run.slot);
+        else if (c.id === 'credits' && this.act === 2) setScene(CreditsRoll, this.run);
         else if (c.id === 'credits') setScene(Credits);
         else setScene(Title);
         return;
@@ -1192,6 +1301,7 @@
       this.page = hit('Escape') ? this.pages.length : this.page + 1;
       this.t = 0;
       Sound.sfx('move');
+      if (this.page >= this.pages.length && this.act === 2) setScene(CreditsRoll, this.run); // the true ending rolls the credits
     },
     draw() {
       drawBackground(ctx, frame * 0.1, frame);
@@ -1607,6 +1717,15 @@
     },
   };
 
+  const CREDITS_ROWS = [
+    ['GAME & DESIGN', 'ColdzeeYT'],
+    ['MUSIC', 'SILVER HAND MAN - VIRAXOR'],
+    ['SOUND EFFECTS', '8-BIT SYNTH (WEB AUDIO)'],
+    ['ART', 'ORIGINAL 8-BIT PIXEL ART'],
+    ['SOURCE', 'GITHUB.COM/COLDZEEYT/PRECIPICE'],
+    ['PLAYTESTERS', 'PUGSNPIGS', 'ColdzeeYT'],
+  ];
+
   const Credits = {
     menu: makeMenu([{ id: 'changelog', label: 'CHANGELOG' }, { id: 'back', label: 'BACK' }], 216, 14),
     update() {
@@ -1617,15 +1736,7 @@
     },
     draw() {
       let y = subScreen('CREDITS', 240);
-      const rows = [
-        ['GAME & DESIGN', 'ColdzeeYT'],
-        ['MUSIC', 'SILVER HAND MAN - VIRAXOR'],
-        ['SOUND EFFECTS', '8-BIT SYNTH (WEB AUDIO)'],
-        ['ART', 'ORIGINAL 8-BIT PIXEL ART'],
-        ['SOURCE', 'GITHUB.COM/COLDZEEYT/PRECIPICE'],
-        ['PLAYTESTERS', 'PUGSNPIGS', 'ColdzeeYT'],
-      ];
-      for (const [head, ...lines] of rows) {
+      for (const [head, ...lines] of CREDITS_ROWS) {
         drawText(ctx, head, W / 2, y, PAL.c, 1, 'center');
         lines.forEach((l, i) => drawText(ctx, l, W / 2, y + 10 + i * 10, PAL.w, 1, 'center'));
         y += 13 + lines.length * 10;
@@ -3071,7 +3182,7 @@
   }
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { AccountScene, Changelog, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { AccountScene, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();
