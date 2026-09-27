@@ -118,7 +118,21 @@ There are **3 save slots**. Touching a checkpoint, finishing a stage and quittin
 all save (stage, checkpoint, embers, memories, deaths and time). **Continue** resumes your most
 recent slot; **Load Game** lets you pick one.
 
-### Hardcore mode (MORE on the title screen)
+### Accounts and cloud saves (ACCOUNT, bottom left of the title screen)
+
+Make an account with a name and password (**Sign up**), or **Log in** on any device. Then:
+
+- **Save** copies this device's saves (all 3 slots, the Hardcore run, settings and key bindings) to the cloud
+- **Load** replaces this device's saves with the cloud copy (it asks you to press twice)
+- **Log out** signs this device out
+
+The account server is `server/` (plain Node, no dependencies). It stores passwords only as salted
+scrypt hashes and keeps everything in one JSON file under `DATA_DIR`. It runs on Railway at
+`https://precipice-accounts-production.up.railway.app` (root directory `/server`, a volume on `/data`).
+To run your own: `cd server && DATA_DIR=./data node server.js`, then change `ACCOUNT_SERVER` in
+`js/account.js`.
+
+### Hardcore mode (MORE, bottom right of the title screen)
 
 No checkpoints: die and the stage starts over. A Hardcore run only saves when a new chapter
 begins, so you can leave between chapters but not mid-chapter.
@@ -133,14 +147,18 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Potato* → *Toaster* → *Grandma's Laptop* → *Gamer Rig* → *NASA PC*
+- **Multiplayer**: make a room and race your friends with its 4-letter code
 - **Credits**
-- **More**: Hardcore mode (more extras to come)
+- **Account** (bottom left): sign up / log in / log out, and save or load your saves in the cloud
+- **More** (bottom right): Hardcore mode (more extras to come)
+- Use LEFT / RIGHT on the menu to reach the two corner buttons
 
 ## Credits
 
 - Game & design: ColdzeeYT
 - Music: "Silver Hand Man" by viraxor
 - Source: https://github.com/coldzeeyt/precipice
+- Playtesters: pugsnpigs, ColdzeeYT
 
 ## Project layout
 
@@ -155,6 +173,9 @@ js/font.js          5x7 and 3x5 bitmap pixel fonts
 js/gfx.js           sprites, tiles, decorations, background (all drawn in code)
 js/audio.js         title music + synthesized 8-bit sound effects
 js/levels.js        tutorial and stage 1 layouts (small builder API)
+js/net.js           online multiplayer rooms (PeerJS)
+js/account.js       accounts and cloud saves (talks to server/)
 js/game.js          input, scenes, player physics and rendering
+server/             account + cloud save server (deployed on Railway)
 assets/music/       title screen song (Silver Hand Man)
 ```
