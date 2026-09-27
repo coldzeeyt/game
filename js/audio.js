@@ -1,5 +1,7 @@
 // Title music + tiny 8-bit sound effects synthesized with WebAudio.
 const TITLE_TRACKS = ['assets/music/silver-hand-man.mp3'];
+// Plays once over the end credits: "This Should Be in a Video Game" by Pianomations.
+const CREDITS_TRACK = 'assets/music/this-should-be-in-a-video-game.mp3';
 
 // Older browser engines (e.g. some desktop wrappers) return nothing from play().
 function safePlay(audio) {
@@ -63,6 +65,37 @@ const Sound = {
         m.pause();
         clearInterval(this.fade);
       }
+    }, 30);
+  },
+
+  // --- end credits song (its own player, so the title song can pick up where it left off)
+  credits: null,
+  creditsFade: null,
+  playCredits() {
+    this.fadeOutMusic(800);
+    clearInterval(this.creditsFade);
+    this.creditsFading = false;
+    if (!this.credits) { this.credits = new Audio(CREDITS_TRACK); this.credits.preload = 'auto'; }
+    const a = this.credits;
+    a.loop = false;
+    try { a.currentTime = 0; } catch (e) { /* not loaded yet */ }
+    a.volume = this.musicVolume;
+    safePlay(a);
+  },
+  // How far into the credits song we are ({ t, d } in seconds; d is 0 until it has loaded).
+  creditsTime() {
+    const a = this.credits;
+    return a ? { t: a.currentTime || 0, d: isFinite(a.duration) ? a.duration : 0, ended: a.ended } : { t: 0, d: 0, ended: false };
+  },
+  fadeOutCredits(ms = 1000) {
+    const a = this.credits;
+    if (!a || a.paused || this.creditsFading) return;
+    clearInterval(this.creditsFade);
+    this.creditsFading = true;
+    const step = Math.max(0.001, a.volume / (ms / 30));
+    this.creditsFade = setInterval(() => {
+      a.volume = Math.max(0, a.volume - step);
+      if (a.volume <= 0) { a.pause(); clearInterval(this.creditsFade); this.creditsFading = false; }
     }, 30);
   },
 

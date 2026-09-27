@@ -120,7 +120,8 @@ approach. Collect every fragment in a stage to see what it has to say.
 
 Beating the Hollow (10-B) shows the true ending, then the **credits roll**: the credits,
 special thanks (Celeste, Geometry Dash platformer mode, Newgrounds), a note from the dev,
-and a last little scene of Ash at a campfire. Hold any key to speed it up, Esc to skip.
+an epilogue, and a last little scene of Ash at a campfire, all set to "This Should Be in a
+Video Game" by Pianomations (it fades out at the end). Hold any key to speed it up, Esc to skip.
 
 ## Saving
 
@@ -166,7 +167,7 @@ begins, so you can leave between chapters but not mid-chapter.
 ## Credits
 
 - Game & design: ColdzeeYT
-- Music: "Silver Hand Man" by viraxor
+- Music: "Silver Hand Man" by viraxor (title), "This Should Be in a Video Game" by Pianomations (end credits)
 - Source: https://github.com/coldzeeyt/precipice
 - Playtesters: pugsnpigs, ColdzeeYT
 
@@ -187,5 +188,5 @@ js/net.js           online multiplayer rooms (PeerJS)
 js/account.js       accounts and cloud saves (talks to server/)
 js/game.js          input, scenes, player physics and rendering
 server/             account + cloud save server (deployed on Railway)
-assets/music/       title screen song (Silver Hand Man)
+assets/music/       title song (Silver Hand Man) and credits song (This Should Be in a Video Game)
 ```

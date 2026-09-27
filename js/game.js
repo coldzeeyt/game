@@ -753,6 +753,16 @@
   const Guide = makeBook(GUIDE);
   const Lore = makeBook(LORE);
 
+  // What became of everyone (end of the credits roll).
+  const EPILOGUE = [
+    ['THE WATCHER KNEW YOUR FACE BECAUSE YOU WORE IT:', "ASH'S CAP, ASH'S CLIMB."],
+    ['LONG BEFORE ASH, WREN, THE FIRST CLIMBER,', 'WISHED NEVER TO BE FORGOTTEN, AND THE BLACK FLAME', 'MADE SURE NO ONE WHO CLIMBED COULD EVER LEAVE.'],
+    ['NOW THE LOST CLIMBERS HAVE WALKED DOWN THE', 'MOUNTAIN AS LIGHT, AND THEY ARE REMEMBERED.'],
+    ['THE EVERFLAME STILL BURNS AT THE SUMMIT,', 'BUT IT GRANTS NOTHING NOW EXCEPT WARMTH.'],
+    ["ASH'S DIARY WAS FINISHED AT LAST,", "AND THE RED CAP HANGS BY ASH'S DOOR."],
+    ['ASH WENT HOME, AND SOME NIGHTS A CAMPFIRE BURNS', 'AT THE FOOT OF MOUNT PRECIPICE, WAITING FOR THE', 'NEXT CLIMBER TO COME BACK DOWN.'],
+  ];
+
   // Scrolling credits and thanks, after the true ending (Act II).
   const CreditsRoll = {
     enter(run) {
@@ -773,14 +783,22 @@
       add('A NOTE FROM THE DEV', PAL.y, 2, 26);
       add('HOLY CRAP YOU PLAYED MY GAME!?!? WOW.', PAL.w, 1, 14);
       add('I HOPE YOU ENJOYED AND GG.', PAL.w, 1, 16);
-      add('- ColdzeeYT', PAL.C, 1, 70);
+      add('- ColdzeeYT', PAL.C, 1, 60);
+      add('EPILOGUE', PAL.V, 2, 26);
+      for (const para of EPILOGUE) {
+        para.forEach((line, i) => add(line, PAL.w, 1, i === para.length - 1 ? 24 : 12));
+      }
+      L[L.length - 1].gap = 70;
       add('THANKS FOR PLAYING', PAL.y, 2, 0);
       this.lines = L;
       this.height = L.reduce((h, l) => h + l.gap, 0);
       this.done = false;
       this.t = 0;
+      this.speed = 0;
+      Sound.playCredits();
     },
     finish() {
+      Sound.fadeOutCredits(1200);
       Sound.sfx('select');
       if (this.run) setScene(Ending, this.run, true); else setScene(Title);
     },
@@ -789,10 +807,14 @@
       if (hit('Escape')) { this.finish(); return; }
       // the last line stops in the middle of the screen
       const stop = H / 2 - 8 - this.height;
-      const speed = Input.down.size > 0 ? 2 : 0.35; // hold any key or button to speed up
+      // Timed to the song: the roll finishes with ~16 seconds of music left for Ash's scene.
+      const song = Sound.creditsTime();
+      if (!this.speed && song.d > 30) this.speed = Math.min(0.6, Math.max(0.2, (this.y - stop) / ((song.d - 16 - song.t) * 60)));
+      const speed = Input.down.size > 0 ? 2 : this.speed || 0.35; // hold any key or button to speed up
+      if (song.d && song.d - song.t < 4) Sound.fadeOutCredits(3800); // fade out over the last notes
       if (this.y > stop) this.y = Math.max(stop, this.y - speed);
       else if (!this.done) { this.done = true; this.t = 0; }
-      if (this.done && this.t > 240 && (hit(...K.ok) || Input.mouse.click)) this.finish(); // let Ash's scene play
+      if (this.done && this.t > 300 && (hit(...K.ok) || Input.mouse.click)) this.finish(); // let Ash's scene play
     },
     draw() {
       drawBackground(ctx, frame * 0.15, frame);
@@ -805,7 +827,7 @@
       }
       if (this.done) {
         this.drawAsh();
-        if (this.t > 240 && blink(20)) drawText(ctx, 'PRESS ENTER', W - 8, 6, PAL.m, 1, 'right');
+        if (this.t > 300 && blink(20)) drawText(ctx, 'PRESS ENTER', W - 8, 6, PAL.m, 1, 'right');
       } else drawText(ctx, 'HOLD ANY KEY: FASTER   ESC: SKIP', W - 8, 6, PAL.n, 1, 'right');
     },
 
@@ -831,24 +853,21 @@
         ctx.fillStyle = i % 3 === 0 ? PAL.w : i % 3 === 1 ? PAL.y : '#fc9838';
         ctx.fillRect(fx + (decoRoll(frame >> 2, i + 70) % (spread * 2 + 1)) - spread, gy - 6 - h, 1, 1);
       }
-      // Ash walks in from the right, then stops by the fire
+      // Ash walks in from the right, stops by the fire, turns to wave, then back to the fire
       const stopX = fx + 14, speed = 1.2;
       const x = Math.max(stopX, W + 10 - t * speed);
       const walking = x > stopX;
       const since = t - (W + 10 - stopX) / speed; // frames since Ash reached the fire
-      const waving = !walking && since > 60 && since < 200; // turns to wave at you, then back to the fire
+      const waving = !walking && since > 60 && since < 200;
       const spr = PLAYER_SPR.dash[walking ? ((t >> 3) % 2 ? 'walk1' : 'walk2') : 'idle'][waving ? 'right' : 'left'];
       const ax = Math.round(x), ay = gy - spr.height;
       ctx.drawImage(spr, ax, ay);
-      if (!walking) {
-        if (waving) {
-          // a wave: a raised hand bobbing beside the head
-          const up = (since >> 3) % 2;
-          ctx.fillStyle = '#fcbcb0'; ctx.fillRect(ax + 11, ay + 3 - up * 2, 2, 2);
-          ctx.fillStyle = '#d82800'; ctx.fillRect(ax + 11, ay + 5 - up * 2, 2, 3);
-        }
-        if (since > 90) drawText(ctx, 'ASH MADE IT HOME, TOO.', W / 2, gy + 14, PAL.V, 1, 'center');
+      if (waving) {
+        const up = (since >> 3) % 2;
+        ctx.fillStyle = '#fcbcb0'; ctx.fillRect(ax + 11, ay + 3 - up * 2, 2, 2);
+        ctx.fillStyle = '#d82800'; ctx.fillRect(ax + 11, ay + 5 - up * 2, 2, 3);
       }
+      if (!walking && since > 90) drawText(ctx, 'ASH MADE IT HOME, TOO.', W / 2, gy + 14, PAL.V, 1, 'center');
       ctx.globalAlpha = 1;
     },
   };
@@ -859,7 +878,9 @@
       'THE CREDITS ROLL', '',
       '- SCROLLING CREDITS AND THANKS AFTER',
       '  THE TRUE ENDING, WITH A NOTE FROM THE DEV',
-      '- AND A LITTLE SCENE WITH ASH AT THE END',
+      '- AN EPILOGUE, THEN A LITTLE SCENE WITH ASH',
+      '- NEW CREDITS SONG: THIS SHOULD BE IN A',
+      '  VIDEO GAME BY PIANOMATIONS',
       '- THE CHANGELOG MOVED INTO CREDITS',
       '- EVERY UPDATE IS IN THE CHANGELOG NOW',
     ] },
@@ -1719,7 +1740,7 @@
 
   const CREDITS_ROWS = [
     ['GAME & DESIGN', 'ColdzeeYT'],
-    ['MUSIC', 'SILVER HAND MAN - VIRAXOR'],
+    ['MUSIC', 'SILVER HAND MAN - VIRAXOR', 'THIS SHOULD BE IN A VIDEO GAME - PIANOMATIONS'],
     ['SOUND EFFECTS', '8-BIT SYNTH (WEB AUDIO)'],
     ['ART', 'ORIGINAL 8-BIT PIXEL ART'],
     ['SOURCE', 'GITHUB.COM/COLDZEEYT/PRECIPICE'],
