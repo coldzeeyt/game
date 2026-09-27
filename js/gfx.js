@@ -1,4 +1,4 @@
-// Pixel-art sprites, tiles and backgrounds, all generated in code (placeholder art).
+// Pixel-art sprites, tiles and backgrounds, all drawn in code.
 const PAL = {
   k: '#000000', w: '#fcfcfc', s: '#fcbcb0', r: '#d82800', R: '#881400',
   b: '#0058f8', B: '#0000bc', y: '#f8b800', g: '#00a800', G: '#58d854',
@@ -44,7 +44,7 @@ function rng(seed) {
   };
 }
 
-// ---------- Player (12x16 placeholder hero) ----------
+// ---------- Player (12x16 hero in Ash's red cap) ----------
 const PLAYER_TOP = [
   '....kkkk....',
   '...krrrrk...',
@@ -217,6 +217,15 @@ const TILES = {
   brick: makeTile('brick'),
   crumble: makeTile('crumble'),
   spike: makeTile('spike'),
+  ice: (() => {
+    const c = makeCanvas(16, 16);
+    const x = c.getContext('2d');
+    x.fillStyle = '#6cb4ec'; x.fillRect(0, 0, 16, 16);
+    x.fillStyle = '#a4e4fc'; x.fillRect(0, 0, 16, 3);
+    x.fillStyle = '#fcfcfc'; x.fillRect(0, 0, 16, 1); x.fillRect(3, 5, 3, 1); x.fillRect(10, 9, 2, 1);
+    x.fillStyle = '#3c7cbc'; x.fillRect(0, 15, 16, 1); x.fillRect(7, 11, 4, 1);
+    return c;
+  })(),
 };
 
 const SIGN_SPR = (() => {

@@ -56,7 +56,7 @@
     down: ['KeyS', 'ArrowDown'],
     ok: ['Enter', 'NumpadEnter', 'Space'],
     back: ['Escape', 'Backspace'],
-    dash: ['ShiftLeft', 'ShiftRight', 'KeyK'],
+    dash: ['ShiftLeft', 'ShiftRight', 'KeyK', 'KeyJ'],
   };
 
   // ---------------------------------------------------------------- helpers
@@ -246,28 +246,95 @@
     setScene(Title);
   }
 
-  function startLevel(def, save) {
+  function startLevel(def, run) {
     Sound.fadeOutMusic();
-    setScene(Play, def, save);
+    setScene(Play, def, run);
   }
 
-  // Save game: written whenever you touch a checkpoint on the climb, so you can
-  // CONTINUE from the title screen later (even after closing the game).
-  const SaveGame = {
-    key: 'precipice.save',
-    load() {
+  // ---------------------------------------------------------------- save slots
+  // Slots 0-2 are normal saves, slot 3 is the Hardcore run. A slot remembers the
+  // campaign stage, the last checkpoint, collectables and play time.
+  const Slots = {
+    keys: ['precipice.slot1', 'precipice.slot2', 'precipice.slot3', 'precipice.hardcore'],
+    HARDCORE: 3,
+    load(i) {
       try {
-        const data = JSON.parse(localStorage.getItem(this.key));
-        return data && LEVELS[data.level] ? data : null;
+        const d = JSON.parse(localStorage.getItem(this.keys[i]));
+        return d && typeof d.stage === 'number' ? d : null;
       } catch (e) { return null; }
     },
-    write(data) {
-      try { localStorage.setItem(this.key, JSON.stringify(data)); return true; } catch (e) { return false; }
+    write(i, d) {
+      d.updated = Date.now();
+      try { localStorage.setItem(this.keys[i], JSON.stringify(d)); return true; } catch (e) { return false; }
     },
-    clear() {
-      try { localStorage.removeItem(this.key); } catch (e) { /* storage unavailable */ }
+    fresh(hardcore) {
+      return { stage: 0, cp: -1, stageTime: 0, stageDeaths: 0, e: [], f: [], totalTime: 0, totalDeaths: 0, found: {}, hardcore: !!hardcore, done: false };
+    },
+    // most recently played normal slot that isn't finished
+    latest() {
+      let best = -1, t = -1;
+      for (let i = 0; i < 3; i++) {
+        const d = this.load(i);
+        if (d && !d.done && d.updated > t) { t = d.updated; best = i; }
+      }
+      return best;
+    },
+    any() { return [0, 1, 2].some((i) => this.load(i)); },
+    // one-time move of the old single save into slot 1
+    migrate() {
+      try {
+        const old = JSON.parse(localStorage.getItem('precipice.save'));
+        if (old && !this.load(0)) {
+          const d = this.fresh(false);
+          Object.assign(d, { cp: old.cp, stageTime: old.time || 0, stageDeaths: old.deaths || 0, e: old.embers || [], f: old.fragments || [] });
+          this.write(0, d);
+        }
+        localStorage.removeItem('precipice.save');
+      } catch (e) { /* nothing to migrate */ }
     },
   };
+  Slots.migrate();
+
+  const orBools = (a = [], b = []) => Array.from({ length: Math.max(a.length, b.length) }, (_, i) => !!(a[i] || b[i]));
+
+  // Totals across the whole campaign (for "EMBERS 12/234").
+  const countTotals = (defs) => {
+    let e = 0, f = 0;
+    for (const def of defs) { const L = buildLevel(def); e += L.embers.length; f += L.fragments.length; }
+    return { e, f };
+  };
+  const TOTALS = countTotals(CAMPAIGN);
+  const TOTALS1 = countTotals(CAMPAIGN.slice(0, ACT2_START)); // Act I only
+
+  function slotStats(d) {
+    const found = Object.assign({}, d.found);
+    const cur = CAMPAIGN[d.stage];
+    if (cur && !d.done) {
+      const was = found[cur.id] || {};
+      found[cur.id] = { e: orBools(was.e, d.e), f: orBools(was.f, d.f) };
+    }
+    let e = 0, f = 0;
+    for (const id in found) { e += found[id].e.filter(Boolean).length; f += found[id].f.filter(Boolean).length; }
+    return { e, f, time: d.totalTime + d.stageTime, deaths: d.totalDeaths + d.stageDeaths };
+  }
+
+  function formatLong(frames) {
+    const s = Math.floor(frames / 60);
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+    return h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  // Start (or resume) the campaign stored in a slot.
+  function playSlot(i) {
+    const data = Slots.load(i);
+    if (!data) return;
+    const run = { slot: i, data };
+    if (data.done) { setScene(Ending, run); return; }
+    const def = CAMPAIGN[Math.min(data.stage, CAMPAIGN.length - 1)];
+    const fresh = data.cp < 0 && !data.stageTime;
+    if (fresh && def.stage === 0) setScene(ChapterIntro, def.chapter, run);
+    else startLevel(def, run);
+  }
 
   const Splash = {
     update() {
@@ -291,11 +358,12 @@
 
   const Title = {
     enter() {
-      this.save = SaveGame.load();
+      this.cont = Slots.latest();
       const items = [];
-      if (this.save) items.push({ id: 'continue', label: 'CONTINUE' });
+      if (this.cont >= 0) items.push({ id: 'continue', label: 'CONTINUE' });
+      items.push({ id: 'new', label: 'NEW GAME' });
+      if (Slots.any()) items.push({ id: 'load', label: 'LOAD GAME' });
       items.push(
-        { id: 'new', label: 'NEW GAME' },
         { id: 'tutorial', label: 'TUTORIAL' },
         { id: 'guide', label: 'GUIDE' },
         { id: 'lore', label: 'LORE' },
@@ -309,18 +377,19 @@
       if (!isApp && !isTouch) items.splice(items.length - 2, 0, { id: 'download', label: 'DOWNLOAD FOR PC', url: DOWNLOAD_URL });
       if (!isApp && /Android/i.test(ua)) items.splice(items.length - 2, 0, { id: 'download', label: 'DOWNLOAD FOR ANDROID', url: ANDROID_URL });
       items.push({ id: 'more', label: 'MORE' });
-      this.menu = makeMenu(items, 98, items.length > 8 ? 14 : 15);
+      this.menu = makeMenu(items, 92, items.length > 9 ? 13 : 14);
     },
     update() {
       titleUpdate();
       const c = this.menu.update();
       if (!c) return;
-      if (c.id === 'continue') startLevel(LEVELS[this.save.level], this.save);
+      if (c.id === 'continue') playSlot(this.cont);
+      else if (c.id === 'load') setScene(SlotSelect, 'load');
       else if (c.id === 'guide') setScene(Guide);
       else if (c.id === 'lore') setScene(Lore);
       else if (c.id === 'download') window.open(c.url, '_blank', 'noopener');
       else if (c.id === 'more') setScene(More);
-      else if (c.id === 'new') setScene(Story);
+      else if (c.id === 'new') setScene(SlotSelect, 'new');
       else if (c.id === 'tutorial') startLevel(LEVELS.tutorial);
       else if (c.id === 'settings') setScene(Settings);
       else if (c.id === 'credits') setScene(Credits);
@@ -349,16 +418,16 @@
   const TYPE_SPEED = 0.8; // characters per frame
 
   const Story = {
-    enter() { this.page = 0; this.t = 0; },
+    enter(run) { this.page = 0; this.t = 0; this.run = run; },
     update() {
       this.t++;
-      if (hit('Escape')) { Sound.sfx('select'); SaveGame.clear(); startLevel(LEVELS.stage1); return; }
+      if (hit('Escape')) { Sound.sfx('select'); setScene(ChapterIntro, 0, this.run); return; }
       if (hit(...K.ok) || Input.mouse.click) {
         const len = STORY[this.page].text.length;
         if (this.t * TYPE_SPEED < len) { this.t = Math.ceil(len / TYPE_SPEED); return; }
         this.page++;
         this.t = 0;
-        if (this.page >= STORY.length) { Sound.sfx('select'); SaveGame.clear(); startLevel(LEVELS.stage1); } else Sound.sfx('move');
+        if (this.page >= STORY.length) { Sound.sfx('select'); setScene(ChapterIntro, 0, this.run); } else Sound.sfx('move');
       }
     },
     draw() {
@@ -421,18 +490,26 @@
     crumble: (x, y) => ctx.drawImage(TILES.crumble, x - 8, y - 8),
     mover: (x, y) => Play.drawMover({ x: x - 16, y: y - 4, w: 32, h: 8 }),
     spikes: (x, y) => ctx.drawImage(TILES.spike, x - 8, y - 12),
+    ice: (x, y) => ctx.drawImage(TILES.ice, x - 8, y - 8),
+    wind: (x, y) => {
+      ctx.fillStyle = '#dce6fc';
+      [[-9, -4, 14], [-6, 0, 16], [-10, 4, 12]].forEach(([dx, dy, w]) => ctx.fillRect(x + dx, y + dy, w, 1));
+      drawText(ctx, '<', x - 12, y - 3, '#dce6fc');
+    },
   };
   const GUIDE = [
     { title: 'YOUR GOAL', text: [
-      'REACH THE FLAG AT THE END OF EACH STAGE.',
-      'EVERY STAGE TAKES YOU HIGHER UP THE MOUNTAIN,',
-      'AND THE EVERFLAME WAITS AT THE SUMMIT.',
+      'REACH THE FLAG AT THE END OF EACH STAGE. THERE ARE',
+      '5 CHAPTERS OF 10 STAGES, AND THE EVERFLAME WAITS',
+      'AT THE VERY TOP OF THE LAST ONE.',
       '',
       'FALLING OFF A PRECIPICE OR TOUCHING SPIKES',
       'SENDS YOU BACK TO YOUR LAST CHECKPOINT.',
       '',
-      'CHECKPOINTS ALSO SAVE YOUR GAME. PICK CONTINUE',
-      'ON THE TITLE SCREEN TO CARRY ON LATER.',
+      'YOU HAVE 3 SAVE SLOTS. CHECKPOINTS AND FINISHED',
+      'STAGES SAVE AUTOMATICALLY. USE CONTINUE OR LOAD',
+      'GAME TO CARRY ON LATER.',
+      'BEAT THE FINAL BOSS TO UNLOCK ACT II.',
     ] },
     { title: 'COLLECTABLES', items: [
       ['ember', 'EMBERS', 'SPARKS OF THE EVERFLAME. OPTIONAL, AND OFTEN', 'TUCKED AWAY IN HARD-TO-REACH SPOTS.'],
@@ -442,9 +519,13 @@
       ['checkpoint', 'CHECKPOINTS', 'RESPAWN HERE AND SAVE YOUR PROGRESS.'],
       ['crystal', 'DASH CRYSTALS', 'REFILL YOUR DASH IN MID-AIR.'],
       ['spring', 'SPRINGS', 'LAUNCH YOU SKY HIGH AND REFILL YOUR DASH.'],
-      ['crumble', 'CRUMBLING BLOCKS', 'FALL AWAY SOON AFTER YOU LAND ON THEM.'],
       ['mover', 'MOVING PLATFORMS', 'RIDE THEM ACROSS WIDE GAPS.'],
+    ] },
+    { title: 'HAZARDS', items: [
       ['spikes', 'SPIKES', 'DEADLY TO THE TOUCH. JUMP OVER THEM.'],
+      ['crumble', 'CRUMBLING BLOCKS', 'FALL AWAY SOON AFTER YOU LAND ON THEM.'],
+      ['wind', 'WIND (CHAPTER 3+)', 'GUSTS PUSH YOU BACK. WAIT FOR THE CALM.'],
+      ['ice', 'ICE (CHAPTER 4+)', 'SLIPPERY! YOU SPEED UP AND STOP SLOWLY.'],
     ] },
     { title: 'CONTROLS', text: [
       'A / D ........... MOVE',
@@ -662,18 +743,245 @@
     return false;
   }
 
-  // Placeholder for extra content later on.
-  const More = {
-    menu: makeMenu([{ id: 'back', label: 'BACK' }], 170),
-    update() { titleUpdate(); backOnly(this.menu); },
+  // ---------------------------------------------------------------- slot picker
+  const SlotSelect = {
+    enter(mode) { this.mode = mode; this.index = 0; this.confirm = false; this.slots = [0, 1, 2].map((i) => Slots.load(i)); },
+    choose(i) {
+      if (this.mode === 'load') {
+        if (!this.slots[i]) { Sound.sfx('pause'); return; }
+        Sound.sfx('select');
+        playSlot(i);
+      } else if (this.slots[i] && !this.confirm) {
+        this.confirm = true;
+        Sound.sfx('move');
+      } else {
+        Sound.sfx('select');
+        const data = Slots.fresh(false);
+        Slots.write(i, data);
+        setScene(Story, { slot: i, data });
+      }
+    },
+    update() {
+      titleUpdate();
+      if (hit(...K.back)) {
+        Sound.sfx('select');
+        if (this.confirm) this.confirm = false; else setScene(Title);
+        return;
+      }
+      if (this.confirm) {
+        if (hit(...K.ok)) this.choose(this.index);
+        return;
+      }
+      if (hit(...K.up)) { this.index = (this.index + 3) % 4; Sound.sfx('move'); }
+      if (hit(...K.down)) { this.index = (this.index + 1) % 4; Sound.sfx('move'); }
+      const m = Input.mouse;
+      if (m.click || m.moved) {
+        for (let i = 0; i < 4; i++) {
+          const y = 58 + i * 42;
+          if (m.x < W / 2 - 170 || m.x > W / 2 + 170 || m.y < y - 6 || m.y > y + (i < 3 ? 34 : 12)) continue;
+          if (m.moved) this.index = i;
+          if (m.click) { this.index = i; if (i === 3) { Sound.sfx('select'); setScene(Title); return; } this.choose(i); }
+        }
+      }
+      if (hit(...K.ok)) {
+        if (this.index === 3) { Sound.sfx('select'); setScene(Title); return; }
+        this.choose(this.index);
+      }
+    },
     draw() {
       drawTitleBackdrop();
-      panel(W / 2 - 90, 70, 180, 124);
-      drawTextOutlined(ctx, 'MORE', W / 2, 84, PAL.C, 2, 'center');
-      drawText(ctx, 'COMING SOON!', W / 2, 118, PAL.w, 1, 'center');
-      drawText(ctx, 'NEW STAGES, SECRETS AND', W / 2, 134, PAL.m, 1, 'center');
-      drawText(ctx, 'EXTRAS WILL SHOW UP HERE.', W / 2, 144, PAL.m, 1, 'center');
+      panel(W / 2 - 190, 20, 380, 232);
+      drawTextOutlined(ctx, this.mode === 'new' ? 'NEW GAME' : 'LOAD GAME', W / 2, 30, PAL.C, 2, 'center');
+      for (let i = 0; i < 3; i++) {
+        const y = 58 + i * 42;
+        const d = this.slots[i];
+        const sel = this.index === i;
+        if (sel) { ctx.fillStyle = 'rgba(60,188,252,0.12)'; ctx.fillRect(W / 2 - 176, y - 6, 352, 38); }
+        drawText(ctx, 'SLOT ' + (i + 1), W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
+        if (!d) { drawText(ctx, 'EMPTY', W / 2 - 100, y, PAL.m); continue; }
+        const st = slotStats(d);
+        const def = CAMPAIGN[Math.min(d.stage, CAMPAIGN.length - 1)];
+        drawText(ctx, d.done ? 'THE TRUE END - ALL COMPLETE' : (d.stage >= ACT2_START ? 'ACT II  ' : '') + def.name, W / 2 - 100, y, d.done ? PAL.y : PAL.w);
+        drawText(ctx, 'CHAPTER ' + (def.chapter + 1) + ': ' + CHAPTERS[def.chapter].name, W / 2 - 100, y + 10, PAL.m);
+        drawText(ctx, 'EMBERS ' + st.e + '/' + TOTALS.e + '  MEMORIES ' + st.f + '/' + TOTALS.f, W / 2 - 100, y + 20, '#fc9838');
+        drawText(ctx, formatLong(st.time), W / 2 + 166, y, PAL.C, 1, 'right');
+      }
+      const sel = this.index === 3;
+      drawText(ctx, (sel ? '> ' : '') + 'BACK' + (sel ? ' <' : ''), W / 2, 188, sel ? PAL.c : '#b8c4f0', 1, 'center');
+      if (this.confirm) {
+        panel(W / 2 - 120, 196, 240, 50, PAL.e);
+        drawText(ctx, 'OVERWRITE SLOT ' + (this.index + 1) + '?', W / 2, 206, PAL.e, 1, 'center');
+        drawText(ctx, 'ENTER: YES    ESC: NO', W / 2, 224, PAL.w, 1, 'center');
+      } else {
+        drawText(ctx, this.mode === 'new' ? 'PICK A SLOT FOR YOUR CLIMB' : 'PICK A SAVE TO CONTINUE', W / 2, 236, PAL.n, 1, 'center');
+      }
+    },
+  };
+
+  // ---------------------------------------------------------------- chapter card
+  const ChapterIntro = {
+    enter(chapter, run) { this.ch = chapter; this.run = run; this.t = 0; },
+    update() {
+      this.t++;
+      const text = CHAPTERS[this.ch].intro;
+      if (hit(...K.ok) || Input.mouse.click || hit('Escape')) {
+        if (this.t * TYPE_SPEED < text.length && !hit('Escape')) { this.t = Math.ceil(text.length / TYPE_SPEED); return; }
+        Sound.sfx('select');
+        startLevel(CAMPAIGN[this.run.data.stage], this.run);
+      }
+    },
+    draw() {
+      const ch = CHAPTERS[this.ch];
+      drawBackground(ctx, frame * 0.2, frame);
+      if (ch.tint) { ctx.fillStyle = ch.tint; ctx.fillRect(0, 0, W, H); }
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 60, W, 150);
+      if (ch.act === 2) drawTextOutlined(ctx, 'ACT II', W / 2, 46, PAL.y, 2, 'center');
+      drawTextOutlined(ctx, 'CHAPTER ' + (this.ch + 1), W / 2, 76, PAL.C, 2, 'center');
+      drawTextOutlined(ctx, ch.name, W / 2, 100, PAL.w, 3, 'center');
+      let budget = Math.floor(this.t * TYPE_SPEED);
+      ch.intro.split('\n').forEach((l, i) => {
+        drawText(ctx, l.slice(0, Math.max(0, budget)), W / 2 - textWidth(l) / 2, 140 + i * 12, PAL.w);
+        budget -= l.length;
+      });
+      if (this.run.data.hardcore) drawTextOutlined(ctx, 'HARDCORE', W / 2, 192, PAL.e, 1, 'center');
+      if (budget >= 0 && blink(20)) drawText(ctx, 'PRESS ENTER', W / 2, 220, PAL.y, 1, 'center');
+    },
+  };
+
+  // ---------------------------------------------------------------- ending
+  const ENDINGS = {
+    1: [
+      'AT THE SUMMIT, THE EVERFLAME BURNS\nBRIGHTER THAN ANY STAR.',
+      'BESIDE IT STANDS THE WATCHER.\nIT TAKES OFF ITS RED CAP.\nIT IS ASH.',
+      '"EVERY CLIMBER WHO WISHED FOR THEMSELVES\nBECAME THE FLAME\'S SHADOW," ASH WHISPERS.\n"I HAVE WAITED SO LONG FOR SOMEONE."',
+      'YOU STEP INTO THE FIRE AND MAKE\nYOUR WISH:\nLET THEM ALL GO HOME.',
+      'THE STORM BREAKS. HUNDREDS OF SHADOWS\nTURN TO LIGHT AND DRIFT DOWN THE\nMOUNTAIN LIKE EMBERS.',
+      'ASH SMILES, AND IS GONE.\nONE LAST EMBER OF THE EVERFLAME\nSTAYS IN YOUR HAND, STILL WARM.',
+      'BUT ON THE FAR SIDE OF THE SUMMIT,\nSOMETHING BLACK IS BURNING.\nTHE STORY IS NOT OVER.',
+    ],
+    2: [
+      'THE BLACK FLAME GUTTERS.\nTHE HOLLOW FALLS TO ITS KNEES.',
+      'YOU HOLD OUT THE LAST EMBER OF THE\nEVERFLAME. NOT TAKEN. GIVEN.',
+      'THE FIRST CLIMBER TAKES IT IN SHAKING\nHANDS, AND FOR THE FIRST TIME IN A\nTHOUSAND YEARS, FEELS WARM.',
+      '"MY NAME WAS WREN," IT SAYS, SMILING.\n"THANK YOU FOR BRINGING ME HOME."',
+      'THE BLACK FLAME GOES OUT. NO MORE\nSHADOWS WILL EVER FORM ON\nMOUNT PRECIPICE.',
+      'YOU WALK DOWN THE MOUNTAIN AT DAWN,\nASH\'S RED CAP ON YOUR HEAD, AND THE\nWHOLE SLOPE GLOWING BEHIND YOU.',
+    ],
+  };
+  const Ending = {
+    enter(run) {
+      this.run = run;
+      this.act = run.data.stage > ACT2_START || run.data.done ? 2 : 1;
+      this.pages = ENDINGS[this.act];
+      this.page = 0;
+      this.t = 0;
+      this.menu = makeMenu(this.act === 1
+        ? [{ id: 'story', label: 'CONTINUE THE STORY (50 MORE STAGES)' }, { id: 'credits', label: 'CREDITS' }, { id: 'title', label: 'BACK TO TITLE' }]
+        : [{ id: 'credits', label: 'CREDITS' }, { id: 'title', label: 'BACK TO TITLE' }], 222, 12);
+      Sound.playMusic(true);
+    },
+    update() {
+      this.t++;
+      if (this.page >= this.pages.length) {
+        if (this.t < 40) return;
+        const c = this.menu.update();
+        if (!c) return;
+        if (c.id === 'story') playSlot(this.run.slot);
+        else if (c.id === 'credits') setScene(Credits);
+        else setScene(Title);
+        return;
+      }
+      if (!(hit(...K.ok) || Input.mouse.click || hit('Escape'))) return;
+      const len = this.pages[this.page].length;
+      if (this.t * TYPE_SPEED < len && !hit('Escape')) { this.t = Math.ceil(len / TYPE_SPEED); return; }
+      this.page = hit('Escape') ? this.pages.length : this.page + 1;
+      this.t = 0;
+      Sound.sfx('move');
+    },
+    draw() {
+      drawBackground(ctx, frame * 0.1, frame);
+      ctx.fillStyle = this.act === 1 ? 'rgba(210,120,40,0.12)' : 'rgba(252,200,120,0.18)';
+      ctx.fillRect(0, 0, W, H);
+      Play.drawEverflame({ x: (W / 2 - 8) / T, y: 110 / T });
+      if (this.page < this.pages.length) {
+        const lines = this.pages[this.page].split('\n');
+        panel(W / 2 - 180, 176, 360, 80);
+        let budget = Math.floor(this.t * TYPE_SPEED);
+        lines.forEach((l, i) => {
+          drawText(ctx, l.slice(0, Math.max(0, budget)), W / 2 - textWidth(l) / 2, 188 + i * 12, PAL.w);
+          budget -= l.length;
+        });
+        if (budget >= 0 && blink(20)) drawText(ctx, 'ENTER >', W / 2 + 172, 244, PAL.y, 1, 'right');
+        return;
+      }
+      const st = slotStats(this.run.data);
+      const tot = this.act === 1 ? TOTALS1 : TOTALS;
+      panel(W / 2 - 170, 128, 340, 136, PAL.y);
+      drawTextOutlined(ctx, this.act === 1 ? 'THE END?' : 'THE TRUE END', W / 2, 136, PAL.y, 2, 'center');
+      drawText(ctx, this.act === 1 ? 'ACT I COMPLETE' : 'THANK YOU FOR PLAYING PRECIPICE', W / 2, 156, PAL.w, 1, 'center');
+      drawText(ctx, 'TIME ' + formatLong(st.time) + '   DEATHS ' + st.deaths, W / 2, 170, PAL.C, 1, 'center');
+      drawText(ctx, 'EMBERS ' + st.e + '/' + tot.e + '   MEMORIES ' + st.f + '/' + tot.f, W / 2, 182, '#fc9838', 1, 'center');
+      const all = st.f >= tot.f;
+      const who = this.act === 1 ? "ASH'S" : "WREN'S";
+      drawText(ctx, all ? 'YOU FOUND EVERY MEMORY. NONE WILL BE FORGOTTEN.' : 'SOME OF ' + who + ' MEMORIES ARE STILL OUT THERE...', W / 2, 196, all ? PAL.e : PAL.V, 1, 'center');
+      if (this.run.data.hardcore) drawText(ctx, 'HARDCORE!', W / 2, 208, PAL.e, 1, 'center');
+      if (this.t >= 40) this.menu.draw();
+    },
+  };
+
+  // ---------------------------------------------------------------- more / hardcore
+  const More = {
+    enter() {
+      this.save = Slots.load(Slots.HARDCORE);
+      const items = [];
+      if (this.save && !this.save.done) items.push({ id: 'cont', label: 'CONTINUE HARDCORE' });
+      items.push({ id: 'new', label: 'NEW HARDCORE RUN' }, { id: 'back', label: 'BACK' });
+      this.menu = makeMenu(items, 160, 16);
+      this.confirm = false;
+    },
+    update() {
+      titleUpdate();
+      if (hit(...K.back)) { Sound.sfx('select'); if (this.confirm) this.confirm = false; else setScene(Title); return; }
+      if (this.confirm) {
+        if (hit(...K.ok)) this.startNew();
+        return;
+      }
+      const c = this.menu.update();
+      if (!c) return;
+      if (c.id === 'back') setScene(Title);
+      else if (c.id === 'cont') playSlot(Slots.HARDCORE);
+      else if (this.save && !this.save.done) this.confirm = true;
+      else this.startNew();
+    },
+    startNew() {
+      Sound.sfx('select');
+      const data = Slots.fresh(true);
+      Slots.write(Slots.HARDCORE, data);
+      setScene(ChapterIntro, 0, { slot: Slots.HARDCORE, data });
+    },
+    draw() {
+      drawTitleBackdrop();
+      panel(W / 2 - 170, 24, 340, 224);
+      drawTextOutlined(ctx, 'MORE', W / 2, 34, PAL.C, 2, 'center');
+      drawText(ctx, 'HARDCORE MODE', W / 2, 62, PAL.e, 1, 'center');
+      ['THERE ARE NO CHECKPOINTS: IF YOU DIE,', 'THE WHOLE STAGE STARTS OVER.', '',
+        'YOUR RUN ONLY SAVES WHEN A NEW CHAPTER', 'BEGINS. LEAVE WHENEVER YOU LIKE, BUT YOU', 'WILL COME BACK AT THE START OF THAT CHAPTER.']
+        .forEach((l, i) => drawText(ctx, l, W / 2, 80 + i * 11, PAL.w, 1, 'center'));
+      if (this.save) {
+        const st = slotStats(this.save);
+        const def = CAMPAIGN[Math.min(this.save.stage, CAMPAIGN.length - 1)];
+        drawText(ctx, this.save.done ? 'HARDCORE COMPLETE!' : 'SAVED AT CHAPTER ' + (def.chapter + 1) + ': ' + CHAPTERS[def.chapter].name, W / 2, 140, PAL.C, 1, 'center');
+        drawText(ctx, 'DEATHS ' + st.deaths + '   TIME ' + formatLong(st.time), W / 2, 150, PAL.m, 1, 'center');
+      }
+      this.menu.y = this.save ? 168 : 150;
       this.menu.draw();
+      drawText(ctx, 'MORE EXTRAS COMING SOON!', W / 2, 232, PAL.n, 1, 'center');
+      if (this.confirm) {
+        panel(W / 2 - 130, 180, 260, 50, PAL.e);
+        drawText(ctx, 'START OVER? YOUR RUN WILL BE LOST.', W / 2, 190, PAL.e, 1, 'center');
+        drawText(ctx, 'ENTER: YES    ESC: NO', W / 2, 208, PAL.w, 1, 'center');
+      }
     },
   };
 
@@ -686,7 +994,7 @@
         ['GAME & DESIGN', 'ColdzeeYT'],
         ['MUSIC', 'SILVER HAND MAN - VIRAXOR', 'DREAM GIRL - SHARK-POOL'],
         ['SOUND EFFECTS', '8-BIT SYNTH (WEB AUDIO)'],
-        ['ART', 'PLACEHOLDER PIXEL ART'],
+        ['ART', 'ORIGINAL 8-BIT PIXEL ART'],
         ['SOURCE', 'GITHUB.COM/COLDZEEYT/PRECIPICE'],
       ];
       for (const [head, ...lines] of rows) {
@@ -703,7 +1011,7 @@
     maxRun: 1.8, accelGround: 0.3, accelAir: 0.2, frictionGround: 0.35, frictionAir: 0.1,
     gravity: 0.36, apexGravity: 0.18, jump: -5.6, jumpCut: -2.2, maxFall: 5.5,
     coyote: 6, buffer: 6,
-    wallSlide: 1.3, wallJumpX: 2.4, wallLock: 10,
+    wallSlide: 1.3, wallJumpX: 2.4, wallLock: 10, climbX: 1.2, climbLock: 5,
     dashSpeed: 4.6, dashTime: 11, spring: -10,
   };
 
@@ -717,9 +1025,13 @@
 
   // ---------------------------------------------------------------- play scene
   const Play = {
-    enter(def, save) {
+    enter(def, run) {
       this.def = def;
+      this.run = run || null;
+      this.hardcore = !!(run && run.data.hardcore);
       this.level = buildLevel(def);
+      if (this.hardcore) this.level.checkpoints = []; // no checkpoints in hardcore
+      this.windT = 0;
       this.crumbles = new Map();
       const s = this.level.start;
       this.spawn = { x: s.x * T + 3, y: s.y * T + 1 };
@@ -738,14 +1050,21 @@
       const L0 = this.level;
       this.decoBlock = new Set();
       for (const o of [...L0.signs, ...L0.checkpoints, ...L0.springs, ...L0.fragments, ...L0.watchers]) this.decoBlock.add(o.x);
-      if (L0.flag) [-1, 0, 1].forEach((d) => this.decoBlock.add(L0.flag.x + d));
+      for (const goal of [L0.flag, L0.everflame]) if (goal) [-1, 0, 1].forEach((d) => this.decoBlock.add(goal.x + d));
       // Drifting dust / snow in front of the background.
       this.motes = Array.from({ length: 70 }, () => ({
         x: Math.random() * W, y: Math.random() * H, v: 0.15 + Math.random() * 0.3, p: Math.random() * 6.28,
       }));
       this.pauseMenu = makeMenu([{ id: 'resume', label: 'RESUME' }, { id: 'quit', label: 'QUIT TO TITLE' }], 140);
       this.toast = 0;
-      if (save) this.loadSave(save);
+      this.orbs = [];
+      const info = def.bossInfo;
+      this.boss = L0.boss && info ? {
+        x: L0.boss.x * T + 8, y: L0.boss.y * T, hp: info.hp, maxHp: info.hp, bonus: info.bonus, info,
+        state: 'intro', t: 0, tx: 0, ty: 0, vy: 0, volleys: 0,
+        floorY: (L0.h - 2) * T - 15,
+      } : null;
+      if (run && (run.data.cp >= 0 || run.data.stageTime > 0) && !this.hardcore) this.loadSave(run.data);
     },
 
     // Continue from a saved checkpoint, keeping collectables and stats.
@@ -758,20 +1077,52 @@
         this.player = newPlayer(this.spawn);
         this.cam = clamp(this.spawn.x - W / 2, 0, L.w * T - W);
       }
-      (save.embers || []).forEach((got, i) => { if (L.embers[i]) L.embers[i].got = got; });
-      (save.fragments || []).forEach((got, i) => { if (L.fragments[i]) L.fragments[i].got = got; });
-      this.deaths = save.deaths || 0;
-      this.time = save.time || 0;
+      (save.e || []).forEach((got, i) => { if (L.embers[i]) L.embers[i].got = got; });
+      (save.f || []).forEach((got, i) => { if (L.fragments[i]) L.fragments[i].got = got; });
+      this.deaths = save.stageDeaths || 0;
+      this.time = save.stageTime || 0;
     },
 
+    // Write mid-stage progress to the slot (normal saves only; hardcore saves per chapter).
     saveProgress(cpIndex) {
+      if (!this.run || this.hardcore) return false;
+      const d = this.run.data;
       const L = this.level;
-      if (L.id === 'tutorial') return; // only the real climb is saved
-      const ok = SaveGame.write({
-        level: L.id, cp: cpIndex, deaths: this.deaths, time: this.time,
-        embers: L.embers.map((e) => e.got), fragments: L.fragments.map((f) => f.got),
-      });
-      if (ok) this.toast = 120;
+      if (cpIndex !== undefined) d.cp = cpIndex;
+      d.stageTime = this.time;
+      d.stageDeaths = this.deaths;
+      d.e = L.embers.map((e) => e.got);
+      d.f = L.fragments.map((f) => f.got);
+      return Slots.write(this.run.slot, d);
+    },
+
+    quit() {
+      this.saveProgress();
+      toTitle();
+    },
+
+    // Stage finished: bank collectables and time, move the slot to the next stage.
+    onStageClear() {
+      if (!this.run) return;
+      const d = this.run.data;
+      const L = this.level;
+      const was = d.found[L.id] || {};
+      d.found[L.id] = { e: orBools(was.e, L.embers.map((e) => e.got)), f: orBools(was.f, L.fragments.map((f) => f.got)) };
+      d.totalTime += this.time;
+      d.totalDeaths += this.deaths;
+      Object.assign(d, { stage: d.stage + 1, cp: -1, stageTime: 0, stageDeaths: 0, e: [], f: [] });
+      if (d.stage >= CAMPAIGN.length) d.done = true;
+      const newChapter = !d.done && CAMPAIGN[d.stage].stage === 0;
+      if (!this.hardcore || d.done || newChapter) Slots.write(this.run.slot, d);
+    },
+
+    nextAfterClear() {
+      if (!this.run) { toTitle(); return; }
+      const d = this.run.data;
+      if (d.done) { setScene(Ending, this.run); return; }
+      const next = CAMPAIGN[d.stage];
+      if (next.stage === 0) setScene(ChapterIntro, next.chapter, this.run);
+      else startLevel(next, this.run);
     },
 
     // --- tile queries
@@ -782,7 +1133,7 @@
     solidAt(tx, ty) {
       if (tx < 0 || tx >= this.level.w) return true; // level edges are walls
       const t = this.tileAt(tx, ty);
-      if (t === '#' || t === '=') return true;
+      if (t === '#' || t === '=' || t === 'i') return true;
       if (t === 'c') {
         const c = this.crumbles.get(tx + ',' + ty);
         return !(c && c.gone > 0);
@@ -798,6 +1149,18 @@
     touchingWall(p, side) {
       const x = side > 0 ? p.x + p.w + 1 : p.x - 1;
       return this.rectSolid(x, p.y + 2, 0.5, p.h - 4);
+    },
+
+    onIce(p) {
+      const ty = Math.floor((p.y + p.h + 0.5) / T);
+      return this.tileAt(Math.floor((p.x + p.w / 2) / T), ty) === 'i';
+    },
+
+    // Wind cycle for storm stages: 0 calm, 1 warning, 2 gust.
+    gust() {
+      if (!this.level.wind) return 0;
+      const t = this.windT % 420;
+      return t < 250 ? 0 : t < 290 ? 1 : 2;
     },
 
     moveX(p, dx) {
@@ -856,6 +1219,8 @@
 
     respawn() {
       this.player = newPlayer(this.spawn);
+      this.orbs = [];
+      if (this.boss && this.boss.hp > 0) this.bossTo('rise');
       this.crumbles.clear();
       for (const c of this.level.crystals) c.gone = 0;
       this.trail = [];
@@ -865,7 +1230,7 @@
       if (this.state === 'paused') {
         const c = this.pauseMenu.update();
         if (hit('Escape') || (c && c.id === 'resume')) this.state = 'play';
-        else if (c && c.id === 'quit') toTitle();
+        else if (c && c.id === 'quit') this.quit();
         return;
       }
       this.updateWorld();
@@ -873,8 +1238,12 @@
         this.clearT++;
         if (this.clearT > 60 && (hit(...K.ok) || Input.mouse.click)) {
           Sound.sfx('select');
-          toTitle();
+          this.nextAfterClear();
         }
+        return;
+      }
+      if (this.state === 'ending') {
+        if (++this.clearT > 100) setScene(Ending, this.run);
         return;
       }
       if (hit('Escape')) {
@@ -892,9 +1261,13 @@
     updateWorld() {
       for (const m of this.level.movers) {
         const px = m.x;
-        m.x += m.dir * m.speed;
-        if (m.x >= m.x1) { m.x = m.x1; m.dir = -1; }
-        if (m.x <= m.x0) { m.x = m.x0; m.dir = 1; }
+        // pause at each end so there's time to step on or off
+        if (m.wait > 0) m.wait--;
+        else {
+          m.x += m.dir * m.speed;
+          if (m.x >= m.x1) { m.x = m.x1; m.dir = -1; m.wait = 50; }
+          if (m.x <= m.x0) { m.x = m.x0; m.dir = 1; m.wait = 50; }
+        }
         m.dx = m.x - px;
       }
       for (const [key, c] of this.crumbles) {
@@ -925,6 +1298,10 @@
       for (let i = this.trail.length - 1; i >= 0; i--) if (--this.trail[i].life <= 0) this.trail.splice(i, 1);
       if (this.shake > 0) this.shake--;
       if (this.toast > 0) this.toast--;
+      if (this.level.wind && this.state === 'play') {
+        this.windT++;
+        if (this.windT % 420 === 290) Sound.sfx('gust');
+      }
       for (const m of this.motes) {
         m.y += m.v;
         m.x += Math.sin(frame / 50 + m.p) * 0.2;
@@ -984,16 +1361,22 @@
         }
       } else {
         // --- run
+        const onIce = p.onGround && this.onIce(p);
         if (p.lock <= 0) {
-          const accel = p.onGround ? P.accelGround : P.accelAir;
+          const accel = onIce ? 0.07 : p.onGround ? P.accelGround : P.accelAir;
           if (dir) {
             if (Math.abs(p.vx) > P.maxRun && Math.sign(p.vx) === dir) p.vx -= Math.sign(p.vx) * 0.05; // keep dash momentum a bit
             else p.vx = clamp(p.vx + dir * accel, -P.maxRun, P.maxRun);
             p.face = dir;
           } else {
-            const f = p.onGround ? P.frictionGround : P.frictionAir;
+            const f = onIce ? 0.025 : p.onGround ? P.frictionGround : P.frictionAir;
             p.vx = Math.abs(p.vx) <= f ? 0 : p.vx - Math.sign(p.vx) * f;
           }
+        }
+
+        // --- wind gusts push you back toward the start
+        if (this.gust() === 2) {
+          p.vx = Math.max(p.vx - (p.onGround ? 0.1 : 0.17), -2.4);
         }
 
         // --- jump / wall jump
@@ -1008,10 +1391,13 @@
           } else {
             const side = this.touchingWall(p, 1) ? 1 : this.touchingWall(p, -1) ? -1 : 0;
             if (side) {
+              // Holding toward the wall = climb jump (small hop, stays on the wall);
+              // otherwise kick off the wall.
+              const climb = dir === side;
               p.vy = P.jump;
-              p.vx = -side * P.wallJumpX;
-              p.face = -side;
-              p.lock = P.wallLock;
+              p.vx = -side * (climb ? P.climbX : P.wallJumpX);
+              p.face = climb ? side : -side;
+              p.lock = climb ? P.climbLock : P.wallLock;
               p.buffer = 0;
               p.bounced = false;
               Sound.sfx('walljump');
@@ -1062,6 +1448,8 @@
           if (this.tileAt(tx, ty) === '^' && overlap(p, { x: tx * T + 2, y: ty * T + 9, w: 12, h: 7 })) return this.die();
         }
       }
+
+      if (this.boss) { this.updateBoss(); if (p.dead) return; }
 
       // --- objects
       for (const s of L.springs) {
@@ -1115,15 +1503,23 @@
           this.spawn = { x: cp.x * T + 3, y: cp.y * T + 1 };
           this.burst(cp.x * T + 12, cp.y * T - 2, [PAL.G, PAL.w], 10, 1.2);
           Sound.sfx('check');
-          this.saveProgress(L.checkpoints.indexOf(cp));
+          if (this.saveProgress(L.checkpoints.indexOf(cp))) this.toast = 120;
         }
+      }
+      const ef = L.everflame;
+      if (ef && overlap(p, { x: ef.x * T - 8, y: (ef.y - 2) * T, w: 32, h: 3 * T })) {
+        this.state = 'ending';
+        this.clearT = 0;
+        p.vx = 0;
+        this.burst(ef.x * T + 8, ef.y * T - 8, [PAL.y, PAL.w, '#fc9838', PAL.r], 40, 3);
+        Sound.sfx('clear');
+        this.onStageClear();
       }
       const f = L.flag;
       if (f && overlap(p, { x: f.x * T + 4, y: (f.y - 3) * T, w: 8, h: 4 * T })) {
         this.state = 'clear';
         this.clearT = 0;
-        const saved = SaveGame.load();
-        if (saved && saved.level === L.id) SaveGame.clear(); // stage finished
+        this.onStageClear();
         p.vx = 0;
         this.burst(f.x * T + 8, (f.y - 3) * T, [PAL.y, PAL.w, PAL.G, PAL.c], 24, 2.5);
         Sound.sfx('clear');
@@ -1143,6 +1539,10 @@
       const sy = this.shake ? Math.round((Math.random() - 0.5) * this.shake) : 0;
       const cx = Math.round(this.cam);
       drawBackground(ctx, cx, frame);
+      if (L.tint) {
+        ctx.fillStyle = L.tint;
+        ctx.fillRect(0, 0, W, H);
+      }
       ctx.fillStyle = '#4c3c8c';
       for (const m of this.motes.slice(0, Config.g.dust)) {
         const mx = (((m.x - cx * 0.6) % W) + W) % W;
@@ -1153,7 +1553,7 @@
       ctx.translate(-cx + sx, sy);
 
       // tiles
-      const isGround = (x, y) => y < 0 || y >= L.h || this.tileAt(x, y) === '#';
+      const isGround = (x, y) => y < 0 || y >= L.h || this.tileAt(x, y) === '#' || this.tileAt(x, y) === 'i';
       const tx0 = Math.floor(cx / T) - 1;
       for (let ty = 0; ty < L.h; ty++) {
         for (let tx = tx0; tx <= tx0 + Math.ceil(W / T) + 1; tx++) {
@@ -1161,6 +1561,7 @@
           if (t === '.') continue;
           const px = tx * T, py = ty * T;
           if (t === '#') drawGround(px, py, tx, ty, isGround); else if (t === '=') ctx.drawImage(TILES.brick, px, py);
+          else if (t === 'i') ctx.drawImage(TILES.ice, px, py);
           else if (t === '^') ctx.drawImage(TILES.spike, px, py);
           else if (t === 'c') {
             const c = this.crumbles.get(tx + ',' + ty);
@@ -1194,6 +1595,8 @@
       for (const c of L.crystals) this.drawCrystal(c);
       for (const e of L.embers) if (!e.got) this.drawEmber(e);
       if (L.flag) this.drawFlag(L.flag);
+      if (L.everflame) this.drawEverflame(L.everflame);
+      if (this.boss) this.drawBoss();
       for (const fr of L.fragments) {
         if (fr.got) continue;
         ctx.drawImage(FRAGMENT_SPR, fr.x * T + 2, fr.y * T + 2);
@@ -1233,7 +1636,18 @@
       }
       ctx.restore();
 
+      if (L.rain && Config.g.rain) drawRain();
+      const gust = this.gust();
+      if (gust === 2 && Config.g.particles) {
+        ctx.fillStyle = 'rgba(220,230,255,0.45)';
+        for (let i = 0; i < 26; i++) {
+          const yy = (decoRoll(i, 7) * 3) % (H - 20) + 14;
+          const xx = W - ((frame * (9 + (i % 4)) + decoRoll(i, 8) * 5) % (W + 60));
+          ctx.fillRect(xx, yy, 14 + (i % 3) * 6, 1);
+        }
+      }
       this.drawHud();
+      if (gust) drawTextOutlined(ctx, gust === 2 ? '<< GUST! <<' : 'WIND RISING...', W / 2, 16, gust === 2 ? PAL.e : PAL.C, 1, 'center');
       if (this.toast > 0 && (this.toast > 30 || this.toast % 8 < 4)) {
         ctx.drawImage(CHECKPOINT_SPR.on, W - 104, H - 28);
         drawTextOutlined(ctx, 'PROGRESS SAVED', W - 6, H - 16, PAL.G, 1, 'right');
@@ -1270,6 +1684,179 @@
       ctx.fillRect(px + 11, py, 1, 2 + (r % 3));
       ctx.fillStyle = PAL.q;
       ctx.fillRect(px + 3 + (r % 5), py + 3 + (r % 4), 1, 1);
+    },
+
+    // ------------------------------------------------------------ boss: the Watcher
+    bossTo(state) {
+      const B = this.boss;
+      B.state = state;
+      B.t = 0;
+      if (state === 'float') {
+        B.tx = 70 + Math.random() * 340;
+        B.ty = 60 + Math.random() * 50;
+      }
+      if (state === 'dive') B.vy = 0;
+    },
+
+    fireVolley() {
+      const B = this.boss, p = this.player;
+      const phase = Math.min(5, B.maxHp - B.hp + B.bonus);
+      const n = 3 + Math.min(phase, 4);
+      const base = Math.atan2(p.y + p.h / 2 - B.y, p.x + p.w / 2 - B.x);
+      const speed = 1.5 + phase * 0.22;
+      for (let i = 0; i < n; i++) {
+        const a = base + (i - (n - 1) / 2) * 0.2;
+        this.orbs.push({ x: B.x, y: B.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life: 400 });
+      }
+      Sound.sfx('shoot');
+    },
+
+    updateBoss() {
+      const B = this.boss, p = this.player, L = this.level;
+      const phase = Math.min(5, B.maxHp - B.hp + B.bonus); // gets meaner with every hit
+      B.t++;
+      switch (B.state) {
+        case 'intro':
+          if (B.t === 20) this.message = { title: B.info.title, text: B.info.intro, color: PAL.e, t: 240, t0: 240 };
+          if (B.t > 150) this.bossTo('float');
+          break;
+        case 'float':
+          B.x += (B.tx - B.x) * 0.03;
+          B.y += (B.ty - B.y) * 0.03 + Math.sin(B.t / 12) * 0.3;
+          if (B.t > 110 - phase * 18) this.bossTo('windup');
+          break;
+        case 'windup':
+          if (B.t > 40 - phase * 5) {
+            this.fireVolley();
+            B.volleys++;
+            this.bossTo(B.volleys % (Math.floor(phase / 2) + 1) === 0 ? 'dive' : 'float');
+          }
+          break;
+        case 'dive':
+          B.vy = Math.min(B.vy + 0.35, 7);
+          B.y += B.vy;
+          if (B.y >= B.floorY) {
+            B.y = B.floorY;
+            this.shake = 6;
+            this.burst(B.x, B.y + 14, [PAL.x, '#342468', PAL.e], 14, 1.5);
+            Sound.sfx('crumble');
+            this.bossTo('dazed');
+          }
+          break;
+        case 'dazed':
+          if (B.t > Math.max(80, 170 - phase * 20)) this.bossTo('rise'); // always a fair window to hit it
+          break;
+        case 'rise':
+          B.y -= 1.6;
+          if (B.y <= 90) this.bossTo('float');
+          break;
+        case 'hurt':
+          B.y -= 1.2;
+          if (B.t > 50) this.bossTo('float');
+          break;
+        case 'defeated':
+          if (B.t === 150) {
+            // the Everflame reappears
+            const fx = B.info.spikes ? 24 : 14; // never over the spike pit
+            L.everflame = { x: fx, y: L.h - 3 };
+            this.burst(fx * T + 8, (L.h - 4) * T, [PAL.y, PAL.w, '#fc9838'], 30, 2.5);
+            Sound.sfx('check');
+          }
+          break;
+      }
+
+      // shadow orbs
+      for (let i = this.orbs.length - 1; i >= 0; i--) {
+        const o = this.orbs[i];
+        o.x += o.vx;
+        o.y += o.vy;
+        if (--o.life <= 0 || o.x < -8 || o.x > L.w * T + 8 || o.y < -8 || o.y > L.h * T || this.solidAt(Math.floor(o.x / T), Math.floor(o.y / T))) {
+          this.orbs.splice(i, 1);
+          continue;
+        }
+        if (overlap(p, { x: o.x - 3, y: o.y - 3, w: 6, h: 6 })) return this.die();
+      }
+
+      // touching the Watcher: a dash while it's dazed lands a hit, anything else hurts you
+      const body = { x: B.x - 10, y: B.y - 15, w: 20, h: 30 };
+      if (!overlap(p, body) || B.state === 'hurt' || B.state === 'defeated' || B.state === 'intro') return;
+      if (B.state === 'dazed' && p.dashing) {
+        B.hp--;
+        p.dashes = 1;
+        p.dashing = 0;
+        p.vx = -p.vx * 0.6;
+        p.vy = -3;
+        this.shake = 10;
+        this.burst(B.x, B.y, [PAL.w, PAL.e, '#342468'], 24, 2.5);
+        Sound.sfx('bosshit');
+        if (B.hp <= 0) {
+          this.orbs = [];
+          this.bossTo('defeated');
+          B.y = B.floorY;
+          this.message = { title: B.info.outro[0], text: B.info.outro[1], color: PAL.y, t: 300, t0: 300 };
+        } else {
+          this.bossTo('hurt');
+        }
+      } else if (B.state !== 'dazed') {
+        this.die();
+      }
+    },
+
+    drawBoss() {
+      const B = this.boss, p = this.player;
+      if (B.state === 'hurt' && B.t % 6 < 3) return;
+      const face = p.x < B.x ? 'left' : 'right';
+      ctx.save();
+      if (B.state === 'intro') ctx.globalAlpha = Math.min(1, B.t / 90);
+      if (B.state === 'defeated') ctx.globalAlpha = Math.max(0.15, 1 - B.t / 200);
+      if (B.state === 'windup') {
+        const r = 6 + (B.t % 10);
+        ctx.fillStyle = 'rgba(252,60,60,0.25)';
+        ctx.fillRect(Math.round(B.x - r), Math.round(B.y - r), r * 2, r * 2);
+      }
+      if (B.state === 'dazed' && B.t % 20 < 10) {
+        // glowing outline: vulnerable!
+        ctx.fillStyle = 'rgba(252,252,252,0.5)';
+        ctx.fillRect(Math.round(B.x - 14), Math.round(B.y - 18), 28, 36);
+      }
+      ctx.drawImage(WATCHER_SPR[face], Math.round(B.x - 12), Math.round(B.y - 16), 24, 32);
+      ctx.restore();
+      if (B.state === 'dazed') {
+        for (let i = 0; i < 3; i++) {
+          const a = frame / 10 + (i * Math.PI * 2) / 3;
+          ctx.fillStyle = PAL.y;
+          ctx.fillRect(Math.round(B.x + Math.cos(a) * 12), Math.round(B.y - 22 + Math.sin(a) * 3), 2, 2);
+        }
+      }
+      for (const o of this.orbs) {
+        ctx.fillStyle = '#342468';
+        ctx.fillRect(Math.round(o.x) - 3, Math.round(o.y) - 3, 6, 6);
+        ctx.fillStyle = PAL.e;
+        ctx.fillRect(Math.round(o.x) - 1, Math.round(o.y) - 1, 2, 2);
+      }
+    },
+
+    drawEverflame(ef) {
+      const x = ef.x * T + 8, y = ef.y * T + 16;
+      // stone brazier
+      ctx.fillStyle = PAL.n; ctx.fillRect(x - 12, y - 6, 24, 6);
+      ctx.fillStyle = PAL.m; ctx.fillRect(x - 10, y - 10, 20, 4);
+      ctx.fillStyle = PAL.l; ctx.fillRect(x - 10, y - 10, 20, 1);
+      // glow + flickering fire
+      for (const [r, a] of [[28, 0.08], [20, 0.14], [12, 0.22]]) {
+        ctx.fillStyle = 'rgba(252,152,56,' + a + ')';
+        for (let j = -r; j <= r; j++) {
+          const h = Math.floor(Math.sqrt(r * r - j * j));
+          ctx.fillRect(x - h, y - 22 + j, h * 2 + 1, 1);
+        }
+      }
+      for (let i = 0; i < 40; i++) {
+        const h = decoRoll(frame >> 2, i + 50) % 26;
+        const spread = Math.max(1, 8 - (h >> 2));
+        const fx = x + ((decoRoll(frame >> 2, i) % (spread * 2 + 1)) - spread);
+        ctx.fillStyle = h > 18 ? PAL.w : h > 9 ? PAL.y : i % 3 ? '#fc9838' : PAL.r;
+        ctx.fillRect(fx, y - 11 - h, 2, 2);
+      }
     },
 
     drawMover(m) {
@@ -1337,7 +1924,23 @@
       const L = this.level;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, 0, W, 11);
-      drawText(ctx, 'DEATHS ' + this.deaths, 4, 2, PAL.w);
+      const label = this.def.index !== undefined ? this.def.name.split(' ')[0] + '  ' : '';
+      drawText(ctx, label + 'DEATHS ' + this.deaths, 4, 2, PAL.w);
+      if (this.hardcore) drawText(ctx, 'HARDCORE', W - 40, 2, PAL.e, 1, 'right');
+      if (this.boss) {
+        const B = this.boss;
+        const pipsW = B.maxHp * 9 - 2;
+        const total = textWidth(B.info.title) + 8 + pipsW;
+        const x0 = Math.round(W / 2 - total / 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(x0 - 6, 11, total + 12, 13);
+        drawText(ctx, B.info.title, x0, 14, PAL.e);
+        const px0 = x0 + textWidth(B.info.title) + 8;
+        for (let i = 0; i < B.maxHp; i++) {
+          ctx.fillStyle = i < B.hp ? PAL.e : '#342468';
+          ctx.fillRect(px0 + i * 9, 14, 7, 7);
+        }
+      }
       if (L.embers.length) {
         const got = L.embers.filter((e) => e.got).length;
         drawText(ctx, 'EMBERS ' + got + '/' + L.embers.length, W / 2 - 36, 2, '#fc9838', 1, 'center');
@@ -1407,11 +2010,16 @@
       drawText(ctx, 'EMBERS  ' + got + '/' + L.embers.length, W / 2, 135, '#fc9838', 1, 'center');
       const frags = L.fragments.filter((f) => f.got).length;
       drawText(ctx, 'MEMORIES ' + frags + '/' + L.fragments.length, W / 2, 147, PAL.V, 1, 'center');
-      let msg = tut ? 'NOW TRY A NEW GAME!' : 'MORE STAGES COMING SOON';
+      let msg = 'NOW TRY A NEW GAME!';
       let col = PAL.C;
+      if (!tut && this.run) {
+        const next = CAMPAIGN[this.run.data.stage];
+        msg = next ? (next.stage === 0 ? 'NEXT: CHAPTER ' + (next.chapter + 1) + '\n' + CHAPTERS[next.chapter].name : 'NEXT: ' + next.name) : '';
+        if (this.hardcore && next && next.stage === 0) msg += '\n(HARDCORE RUN SAVED)';
+      }
       if (!tut && L.fragments.length) {
         if (frags === L.fragments.length && L.secret) { msg = L.secret; col = PAL.e; }
-        else { msg = 'SOME MEMORIES ARE\nSTILL LOST ON THE CLIFF...'; col = PAL.V; }
+        else if (frags < L.fragments.length) { msg += (msg ? '\n' : '') + 'SOME MEMORIES ARE STILL LOST...'; col = PAL.V; }
       }
       msg.split('\n').forEach((l, i) => drawText(ctx, l, W / 2, 163 + i * 10, col, 1, 'center'));
       if (this.clearT > 60 && blink(20)) drawText(ctx, 'PRESS ENTER', W / 2, 193, PAL.w, 1, 'center');
@@ -1474,7 +2082,7 @@
   }
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { Splash, Title, Settings, Guide, Lore, Credits, More, Play }, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { Splash, Title, Settings, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

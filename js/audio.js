@@ -121,6 +121,9 @@ const Sound = {
       case 'fragment': [220, 262, 330, 247].forEach((f, i) => this.tone('triangle', f, f * 0.99, 0.35, 0.09, i * 0.18)); break;
       case 'whisper': this.noise(0.8, 0.03); this.tone('sine', 110, 55, 1.0, 0.08); break;
       case 'thunder': this.noise(1.6, 0.09); this.tone('triangle', 70, 30, 1.4, 0.14); break;
+      case 'gust': this.noise(0.9, 0.05); break;
+      case 'shoot': this.tone('square', 700, 200, 0.18, 0.04); break;
+      case 'bosshit': this.noise(0.25, 0.1); this.tone('square', 900, 120, 0.4, 0.08); break;
       case 'pause': this.tone('square', 440, 440, 0.08, 0.05); break;
       case 'die':
         this.noise(0.3, 0.1);

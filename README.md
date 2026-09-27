@@ -62,6 +62,37 @@ and **II** (pause / back). Tap menu items to pick them. Hold the phone sideways.
 
 The **Tutorial** on the title screen walks through every mechanic.
 
+## The campaign
+
+Two acts, 102 stages in all. Plan on several hours for a first run through Act I, and more for
+Act II, especially if you hunt down every ember and memory.
+
+**Act I**
+
+| Chapter | Name | What's new |
+| --- | --- | --- |
+| 1 | The Foothills | Gentle warm-up: jumps, spikes, springs, crumbling bridges, moving platforms |
+| 2 | The Cliffs | Dashing, dash crystals, tall walls to climb |
+| 3 | The Storm | Rain and wind gusts that push you back |
+| 4 | The Frozen Pass | Slippery ice |
+| 5 | The Summit | Everything at once |
+| Boss | **The Watcher** | Your shadow. Dash into it while it's dazed (5 hits), then reach the Everflame |
+
+**Act II**: unlocked after beating the Watcher (*Continue the story* on the ending screen,
+or Continue / Load Game on the title screen).
+
+| Chapter | Name | Flavour |
+| --- | --- | --- |
+| 6 | The Far Side | The unmapped side of the mountain |
+| 7 | The Sunken Caves | Dark caves full of crumbling ground and crystals |
+| 8 | The Ashen Wastes | Hot wind and lots of moving platforms |
+| 9 | The Glass Peaks | Ice and wind together |
+| 10 | The Hollow Crown | Everything, at its hardest |
+| Boss | **The Hollow** | The first climber. 7 hits, faster attacks, a spiked arena. Leads to the true ending |
+
+Stage 1-1 is hand-made. The others are built from small, individually tested sections by a
+seeded generator (`js/levels.js`), so every stage is the same on every playthrough.
+
 ## Mechanics
 
 - **Tight platforming**: coyote time, jump buffering, variable jump height and a floatier apex.
@@ -69,30 +100,41 @@ The **Tutorial** on the title screen walks through every mechanic.
 - **Dash**: one air dash in 8 directions. It recharges when you land. Your cap turns blue when it's spent.
 - **Dash crystals** refill your dash in mid-air.
 - **Springs**, **crumbling blocks**, **moving platforms**, **spikes** and **checkpoints**.
+- **Climbing**: hold toward a wall and tap jump to climb it; jump without holding to kick off.
+- **Wind** (Chapter 3+): gusts push you back. Wait for the calm, then jump.
+- **Ice** (Chapter 4+): you speed up and slow down slowly.
 - **Embers**: optional collectibles.
 
 ## The mystery
 
-Violet rune stones hold **memory fragments**, pages from Ash's diary.
+Violet rune stones hold **memory fragments**: pages from Ash's diary in Act I, and carvings
+left by the very first climber in Act II.
 Something that wears your face appears ahead of you on the cliffs and vanishes when you
 approach. Collect every fragment in a stage to see what it has to say.
 
 ## Saving
 
-Touching a checkpoint saves your game (checkpoint, embers, memory fragments, deaths and time).
-**Continue** on the title screen resumes from there, even after closing the game.
+There are **3 save slots**. Touching a checkpoint, finishing a stage and quitting to the title
+all save (stage, checkpoint, embers, memories, deaths and time). **Continue** resumes your most
+recent slot; **Load Game** lets you pick one.
+
+### Hardcore mode (MORE on the title screen)
+
+No checkpoints: die and the stage starts over. A Hardcore run only saves when a new chapter
+begins, so you can leave between chapters but not mid-chapter.
 
 ## Title screen
 
-- **Continue**: resume from your last checkpoint (shown once you have a save)
-- **New Game**: opens with the backstory (Esc skips it)
+- **Continue**: resume your most recent save slot
+- **New Game**: pick a slot, then the backstory (Esc skips it)
+- **Load Game**: pick any of the 3 save slots
 - **Tutorial**: teaches every mechanic
 - **Guide**: your goal, the collectables, everything on the mountain, and the controls
 - **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Potato* → *Toaster* → *Grandma's Laptop* → *Gamer Rig* → *NASA PC*
 - **Credits**
-- **More**: placeholder for future extras
+- **More**: Hardcore mode (more extras to come)
 
 ## Credits
 
