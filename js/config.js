@@ -19,8 +19,38 @@ const RESOLUTIONS = [
   { name: '2560 X 1440', w: 2560 },
 ];
 
+// Default key bindings: two keys per action (arrow keys work out of the box).
+const DEFAULT_KEYS = {
+  left: ['KeyA', 'ArrowLeft'],
+  right: ['KeyD', 'ArrowRight'],
+  up: ['KeyW', 'ArrowUp'],
+  down: ['KeyS', 'ArrowDown'],
+  jump: ['Space', 'KeyZ'],
+  dash: ['ShiftLeft', 'KeyX'],
+  pause: ['Escape', 'KeyP'],
+};
+const copyKeys = (k) => JSON.parse(JSON.stringify(k));
+
+// Friendly names for key codes (shown in the Controls tab and on signs).
+function keyName(code) {
+  if (!code) return '-';
+  const names = {
+    ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', ArrowUp: 'UP', ArrowDown: 'DOWN', Space: 'SPACE',
+    ShiftLeft: 'L-SHIFT', ShiftRight: 'R-SHIFT', ControlLeft: 'L-CTRL', ControlRight: 'R-CTRL',
+    AltLeft: 'L-ALT', AltRight: 'R-ALT', Enter: 'ENTER', NumpadEnter: 'ENTER', Escape: 'ESC',
+    Backspace: 'BACKSPACE', Tab: 'TAB', CapsLock: 'CAPS', Comma: ',', Period: '.', Slash: '/',
+    Semicolon: ';', Quote: "'", Minus: '-', Equal: '=', BracketLeft: '(', BracketRight: ')',
+  };
+  if (names[code]) return names[code];
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  if (/^Numpad\d$/.test(code)) return 'NUM ' + code.slice(6);
+  return code.toUpperCase().slice(0, 10);
+}
+
 const Config = {
   key: 'precipice.settings',
+  keys: copyKeys(DEFAULT_KEYS),
   gfx: 3,
   res: 0,
   music: 8,
@@ -34,11 +64,12 @@ const Config = {
       this.res = pick(d.res, RESOLUTIONS.length - 1, this.res);
       this.music = pick(d.music, 10, this.music);
       this.sfx = pick(d.sfx, 10, this.sfx);
+      if (d.keys) for (const a in DEFAULT_KEYS) if (Array.isArray(d.keys[a])) this.keys[a] = d.keys[a].slice(0, 2);
     } catch (e) { /* defaults */ }
   },
   save() {
     try {
-      localStorage.setItem(this.key, JSON.stringify({ gfx: this.gfx, res: this.res, music: this.music, sfx: this.sfx }));
+      localStorage.setItem(this.key, JSON.stringify({ gfx: this.gfx, res: this.res, music: this.music, sfx: this.sfx, keys: this.keys }));
     } catch (e) { /* storage unavailable */ }
   },
 };

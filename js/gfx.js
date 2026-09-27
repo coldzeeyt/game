@@ -75,6 +75,20 @@ for (const k in PLAYER_LEGS) {
   }
 }
 
+// Other players online: the same hero in a different cap/shirt colour.
+const COLOR_SPRITES = {};
+function playerSpritesFor(color) {
+  if (COLOR_SPRITES[color]) return COLOR_SPRITES[color];
+  PAL['@'] = color;
+  const set = {};
+  for (const k in PLAYER_LEGS) {
+    const right = spriteFromRows(PLAYER_TOP.map((row) => row.replace(/r/g, '@')).concat(PLAYER_LEGS[k]));
+    set[k] = { right, left: flipped(right) };
+  }
+  COLOR_SPRITES[color] = set;
+  return set;
+}
+
 // The Watcher: a shadow that wears the hero's shape, with red eyes.
 const WATCHER_SPR = (() => {
   const rows = PLAYER_TOP.concat(PLAYER_LEGS.idle).map((row) =>
@@ -217,6 +231,14 @@ const TILES = {
   brick: makeTile('brick'),
   crumble: makeTile('crumble'),
   spike: makeTile('spike'),
+  ladder: (() => {
+    const c = makeCanvas(16, 16);
+    const x = c.getContext('2d');
+    x.fillStyle = PAL.D; x.fillRect(2, 0, 2, 16); x.fillRect(12, 0, 2, 16);
+    x.fillStyle = PAL.d; x.fillRect(2, 0, 1, 16); x.fillRect(12, 0, 1, 16);
+    for (const y of [2, 7, 12]) { x.fillStyle = PAL.D; x.fillRect(4, y + 1, 8, 1); x.fillStyle = PAL.d; x.fillRect(4, y, 8, 1); }
+    return c;
+  })(),
   ice: (() => {
     const c = makeCanvas(16, 16);
     const x = c.getContext('2d');

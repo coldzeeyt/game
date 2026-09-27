@@ -1,8 +1,5 @@
-// Title music playlist + tiny 8-bit sound effects synthesized with WebAudio.
-const TITLE_TRACKS = [
-  'assets/music/silver-hand-man.mp3',
-  'assets/music/dream-girl.mp3',
-];
+// Title music + tiny 8-bit sound effects synthesized with WebAudio.
+const TITLE_TRACKS = ['assets/music/silver-hand-man.mp3'];
 
 // Older browser engines (e.g. some desktop wrappers) return nothing from play().
 function safePlay(audio) {
@@ -24,12 +21,7 @@ const Sound = {
     if (!this.music) {
       this.music = new Audio(TITLE_TRACKS[0]);
       this.music.preload = 'auto';
-      // When one title song ends, move on to the next (and loop the playlist).
-      this.music.addEventListener('ended', () => {
-        this.track = (this.track + 1) % TITLE_TRACKS.length;
-        this.music.src = TITLE_TRACKS[this.track];
-        safePlay(this.music);
-      });
+      this.music.loop = true;
     }
   },
 

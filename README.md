@@ -139,7 +139,7 @@ begins, so you can leave between chapters but not mid-chapter.
 ## Credits
 
 - Game & design: ColdzeeYT
-- Music: "Silver Hand Man" by viraxor, "Dream Girl" by shark-pool
+- Music: "Silver Hand Man" by viraxor
 - Source: https://github.com/coldzeeyt/precipice
 
 ## Project layout
@@ -153,8 +153,8 @@ icon.png / .ico     app icon (a memory fragment)
 js/config.js        settings: resolution, graphics presets, volume
 js/font.js          5x7 and 3x5 bitmap pixel fonts
 js/gfx.js           sprites, tiles, decorations, background (all drawn in code)
-js/audio.js         title music playlist + synthesized 8-bit sound effects
+js/audio.js         title music + synthesized 8-bit sound effects
 js/levels.js        tutorial and stage 1 layouts (small builder API)
 js/game.js          input, scenes, player physics and rendering
-assets/music/       title screen songs (Silver Hand Man, Dream Girl)
+assets/music/       title screen song (Silver Hand Man)
 ```

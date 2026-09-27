@@ -11,15 +11,17 @@ const ROWS = 17;
 const OFF = ROWS - 15;
 
 function buildLevel(def) {
-  const tiles = Array.from({ length: ROWS }, () => Array(def.width).fill('.'));
+  const R = def.rows || ROWS; // tall stages climb above the first screen
+  const tiles = Array.from({ length: R }, () => Array(def.width).fill('.'));
   const L = {
-    name: def.name, id: def.id, objective: def.objective, w: def.width, h: ROWS, tiles,
+    name: def.name, id: def.id, objective: def.objective, w: def.width, h: R, tiles,
     start: { x: 2, y: 12 }, signs: [], checkpoints: [], springs: [],
     crystals: [], embers: [], movers: [], flag: null,
     fragments: [], watchers: [], secret: def.secret || null, everflame: null, boss: null,
+    saws: [], vents: [], keys: [], orbs: [],
     chapter: def.chapter || 0, index: def.index, wind: !!def.wind, rain: !!def.rain, tint: def.tint || null,
   };
-  const set = (x, y, ch) => { if (x >= 0 && x < def.width && y >= 0 && y < ROWS) tiles[y][x] = ch; };
+  const set = (x, y, ch) => { if (x >= 0 && x < def.width && y >= 0 && y < R) tiles[y][x] = ch; };
   const fill = (x0, x1, y0, y1, ch) => {
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) set(x, y, ch);
   };
@@ -28,7 +30,7 @@ function buildLevel(def) {
   const fillY = (x0, x1, y0, y1, ch) => fill(x0, x1, y0 <= 0 ? 0 : Y(y0), Y(y1), ch);
   def.build({
     start: (x, y) => { L.start = { x, y: Y(y) }; },
-    ground: (x0, x1, top = 13) => fill(x0, x1, Y(top), ROWS - 1, '#'),
+    ground: (x0, x1, top = 13) => fill(x0, x1, Y(top), R - 1, '#'),
     fill: fillY,
     plat: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), '='),
     crumble: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), 'c'),
@@ -46,10 +48,60 @@ function buildLevel(def) {
     everflame: (x, y) => { L.everflame = { x, y: Y(y) }; },
     boss: (x, y) => { L.boss = { x, y: Y(y) }; },
     ice: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), 'i'),
+    ladder: (x, y0, y1) => fill(x, x, Y(y0), Y(y1), 'H'),
+    // puzzles
+    key: (x, y) => L.keys.push({ x, y: Y(y), got: false }),
+    gate: (x, y0, y1) => fill(x, x, Math.max(0, Y(y0)), Y(y1), 'G'),
+    orb: (x, y) => L.orbs.push({ x, y: Y(y) }),
+    blue: (x0, x1, y0, y1) => fill(x0, x1, Y(y0), Y(y1), 'B'),
+    red: (x0, x1, y0, y1) => fill(x0, x1, Y(y0), Y(y1), 'R'),
     fragment: (x, y, text) => L.fragments.push({ x, y: Y(y), text, got: false }),
     watcher: (x, y, text) => L.watchers.push({ x, y: Y(y), text, fade: 0, gone: false }),
   });
+  if (def.index !== undefined && def.chapter >= 1 && !def.bossInfo) placeHazards(L, def);
   return L;
+}
+
+// Extra hazards on long flat stretches of ground: saw blades (chapter 2+) and
+// fire vents (chapter 3+). Placed after the layout is built, so the terrain is
+// unchanged, and kept away from checkpoints, collectables and other objects.
+function placeHazards(L, def) {
+  const useVents = def.chapter >= 2;
+  const blocked = new Set();
+  const objs = [...L.signs, ...L.checkpoints, ...L.springs, ...L.fragments, ...L.watchers, ...L.embers, ...L.crystals, ...L.keys, ...L.orbs];
+  for (const o of objs) for (let d = -2; d <= 2; d++) blocked.add(o.x + d);
+  if (L.flag) for (let d = -5; d <= 5; d++) blocked.add(L.flag.x + d);
+  const surface = (x) => {
+    for (let y = 0; y < L.h; y++) {
+      if ('HGBR'.includes(L.tiles[y][x])) return null; // ladders, gates, switch blocks
+      if (L.tiles[y][x] !== '.') return { y, t: L.tiles[y][x] };
+    }
+    return null;
+  };
+  let runStart = -1, runY = -1, placed = def.stage % 2, sawDone = false, ventDone = false;
+  const flush = (end) => {
+    const len = end - runStart + 1;
+    if (runStart < 0 || len < 8) return;
+    const vent = useVents && placed++ % 2 === 1; // alternate saws and vents
+    if (vent) {
+      const mid = runStart + Math.floor(len / 2);
+      L.vents.push({ x: mid, y: runY, phase: (mid * 37) % 200 });
+      if (def.stage <= 2 && def.chapter === 2 && !ventDone) L.signs.push({ x: runStart, y: runY - 1, text: 'FIRE VENTS BURST ON A TIMER.\nWAIT UNTIL THEY COOL DOWN!' });
+      ventDone = true;
+    } else {
+      L.saws.push({ x0: (runStart + 3) * 16, x1: (end - 3) * 16 + 16, y: runY * 16 - 7, x: (runStart + 3) * 16 + 8, dir: 1, speed: 0.6 + Math.min(1, def.chapter / 8) * 0.5 });
+      if (def.stage <= 2 && def.chapter === 1 && !sawDone) L.signs.push({ x: runStart, y: runY - 1, text: 'SAW BLADES!\nJUMP OVER THEM.' });
+      sawDone = true;
+    }
+  };
+  for (let x = 12; x < L.w - 8; x++) {
+    const sfc = surface(x);
+    const ok = sfc && sfc.t === '#' && !blocked.has(x);
+    if (ok && runStart >= 0 && sfc.y === runY) continue;
+    flush(x - 1);
+    runStart = ok ? x : -1;
+    runY = ok ? sfc.y : -1;
+  }
 }
 
 const LEVELS = {
@@ -62,8 +114,8 @@ const LEVELS = {
       // --- Moving & jumping ---
       b.start(2, 12);
       b.ground(0, 20);
-      b.sign(4, 12, 'A / D TO MOVE\nESC TO PAUSE');
-      b.sign(10, 12, 'SPACE TO JUMP\nHOLD IT TO JUMP HIGHER');
+      b.sign(4, 12, '{left} / {right} TO MOVE  ({left2} / {right2})\n{pause} TO PAUSE');
+      b.sign(10, 12, '{jump} TO JUMP\nHOLD IT TO JUMP HIGHER');
       b.ground(14, 16, 12);
       b.ground(17, 20, 10);
       b.sign(19, 9, "DON'T FALL OFF\nTHE PRECIPICE!");
@@ -82,14 +134,14 @@ const LEVELS = {
       b.ground(50, 62, 4);
 
       // --- Dash ---
-      b.sign(52, 3, 'JUMP, THEN PRESS SHIFT (OR K) TO DASH!\nAIM IT WITH W A S D');
+      b.sign(52, 3, 'JUMP, THEN PRESS {dash} TO DASH!\nAIM IT WITH THE DIRECTION KEYS');
       b.checkpoint(55, 3);
       b.ground(67, 76, 4);
       b.ember(65, 1);
       b.fragment(58, 3, 'WHO CARVED THESE STEPS\nINTO THE MOUNTAIN?');
       b.watcher(74, 3, '...YOU ARE NOT\nTHE FIRST.');
       b.ground(77, 83, 11);
-      b.sign(79, 10, 'JUMP, THEN HOLD W + DASH TO GO UP.\nLANDING RECHARGES YOUR DASH');
+      b.sign(79, 10, 'JUMP, THEN HOLD {up} + {dash} TO GO UP.\nLANDING RECHARGES YOUR DASH');
       b.ground(84, 88, 8);
 
       // --- Dash crystals ---
@@ -99,9 +151,10 @@ const LEVELS = {
       b.checkpoint(101, 8);
 
       // --- Springs ---
-      b.sign(103, 8, 'SPRINGS LAUNCH\nYOU SKY HIGH');
+      b.sign(103, 8, 'SPRINGS LAUNCH YOU SKY HIGH.\nOR CLIMB THE LADDER WITH {up} / {down}');
       b.spring(106, 8);
       b.ground(108, 112, 2);
+      b.ladder(107, 2, 8);
 
       // --- Crumbling blocks ---
       b.sign(110, 1, "CRUMBLING BLOCKS\nWON'T HOLD FOR LONG!");
@@ -113,7 +166,8 @@ const LEVELS = {
       b.sign(129, 8, 'RIDE THE MOVING\nPLATFORM ACROSS');
       b.mover(133, 146, 9);
       b.ground(149, 161, 9);
-      b.sign(151, 8, 'EMBERS ARE OPTIONAL.\nREACH THE FLAG!');
+      b.ice(149, 9, 7);
+      b.sign(151, 8, 'ICE! RUN, THEN LET GO TO SLIDE.\nEMBERS ARE OPTIONAL. REACH THE FLAG!');
       b.flag(157, 8);
     },
   },
@@ -352,6 +406,7 @@ const CHUNKS = {
     const x0 = g.x;
     g.floor(4);
     g.b.spring(x0 + 1, g.y - 1);
+    if (g.chunkNo % 2 === 0) g.b.ladder(x0 + 3, g.y - rise, g.y - 1); // an easier way up
     g.setY(g.y - rise);
     g.floor(5);
     if (g.r() < g.emberChance) g.b.ember(x0 + 1, g.y - 2);
@@ -397,9 +452,61 @@ const CHUNKS = {
     const rise = Math.min(g.int(4, 7), g.y - TOP_ROW);
     if (rise < 3) return CHUNKS.drop(g);
     g.floor(3);
+    if (g.chunkNo % 2 === 0) g.b.ladder(g.x - 1, g.y - rise, g.y - 1); // ladder on the wall face
     g.setY(g.y - rise);
     g.floor(g.int(4, 6));
   },
+  // --- going up: a vertical shaft to climb, then carry on higher up
+  tower(g) {
+    const rise = 2 * Math.floor(g.int(8, 11 + Math.round(g.d * 5)) / 2); // even: ledges every 2 rows
+    const styles = g.chapter === 0 ? ['ladder', 'zig'] : ['ladder', 'zig', 'zig', 'crumble'];
+    const style = styles[g.chunkNo % styles.length];
+    g.floor(3);
+    const sx = g.x, top = g.y - rise;
+    g.b.ground(sx, sx + 6, g.y); // shaft floor
+    g.b.ground(sx + 7, sx + 10, top); // the cliff you're climbing
+    if (style === 'ladder') g.b.ladder(sx + 6, top, g.y - 1);
+    else {
+      // zig-zag ledges two rows apart, the top one next to the cliff
+      let right = true;
+      for (let yy = top + 2; yy <= g.y - 2; yy += 2) {
+        const px = right ? sx + 4 : sx;
+        if (style === 'crumble' && !right) g.b.crumble(px, yy, 3); else g.b.plat(px, yy, 3);
+        right = !right;
+      }
+    }
+    g.x = sx + 11;
+    g.y = top;
+    g.rebase();
+    g.floor(g.int(3, 5));
+  },
+  // --- thinking: a locked gate; the key waits on a ledge up a ladder
+  keygate(g) {
+    g.floor(3);
+    const x0 = g.x, y = g.y;
+    g.b.ground(x0, x0 + 12, y);
+    g.b.ladder(x0, y - 5, y - 1);
+    g.b.plat(x0 + 1, y - 5, 6);
+    g.b.key(x0 + 5, y - 6);
+    g.b.gate(x0 + 10, y - 12, y - 1);
+    if (!g.keySign) { g.b.sign(x0 - 2, y - 1, 'THE GATE IS LOCKED.\nFIND THE KEY FIRST!'); g.keySign = true; }
+    g.x = x0 + 13;
+    g.floor(3);
+  },
+  // --- thinking: orbs flip blue/red blocks. Cross the blue bridge, then flip back to drop the blue wall.
+  switches(g) {
+    g.floor(4);
+    const x0 = g.x, y = g.y;
+    g.b.orb(x0 - 2, y - 3); // orb A before the gap
+    g.b.blue(x0, x0 + 7, y, y); // bridge (ghost until flipped); 8 wide, too far to dash
+    g.b.ground(x0 + 8, x0 + 13, y);
+    g.b.orb(x0 + 9, y - 3); // orb B on the far side
+    g.b.blue(x0 + 12, x0 + 12, y - 7, y - 1); // blue wall: appears with the bridge
+    if (!g.orbSign) { g.b.sign(x0 - 4, y - 1, 'JUMP INTO AN ORB TO FLIP THE BLUE\nBLOCKS ON AND OFF. THINK AHEAD!'); g.orbSign = true; }
+    g.x = x0 + 14;
+    g.floor(3);
+  },
+
   // --- chapter 4 onwards
   ice(g) {
     const len = g.int(6, 10);
@@ -412,17 +519,17 @@ const CHUNKS = {
 };
 
 const CHUNK_SETS = [
-  { gap: 4, steps: 3, spikes: 2, plats: 2, crumble: 1, spring: 2, drop: 2, mover: 1 },
-  { gap: 2, steps: 1, spikes: 2, plats: 1, crumble: 2, spring: 1, drop: 1, mover: 1, dashgap: 3, updash: 2, crystal: 2, climb: 2 },
-  { gap: 3, steps: 1, spikes: 2, plats: 2, crumble: 2, spring: 1, drop: 1, mover: 2, dashgap: 2, updash: 1, crystal: 2, climb: 2 },
-  { gap: 2, steps: 1, spikes: 2, plats: 1, crumble: 2, spring: 1, drop: 1, mover: 1, dashgap: 2, updash: 1, crystal: 2, climb: 1, ice: 4 },
-  { gap: 2, steps: 1, spikes: 3, plats: 2, crumble: 3, spring: 1, drop: 1, mover: 2, dashgap: 3, updash: 2, crystal: 3, climb: 2, ice: 3 },
+  { gap: 4, steps: 3, spikes: 2, plats: 2, crumble: 1, spring: 2, drop: 2, mover: 1, tower: 1, keygate: 1, switches: 1 },
+  { gap: 2, steps: 1, spikes: 2, plats: 1, crumble: 2, spring: 1, drop: 1, mover: 1, dashgap: 3, updash: 2, crystal: 2, climb: 2, tower: 2, keygate: 1, switches: 1 },
+  { gap: 3, steps: 1, spikes: 2, plats: 2, crumble: 2, spring: 1, drop: 1, mover: 2, dashgap: 2, updash: 1, crystal: 2, climb: 2, tower: 2, keygate: 1, switches: 1 },
+  { gap: 2, steps: 1, spikes: 2, plats: 1, crumble: 2, spring: 1, drop: 1, mover: 1, dashgap: 2, updash: 1, crystal: 2, climb: 1, ice: 4, tower: 2, keygate: 1, switches: 1 },
+  { gap: 2, steps: 1, spikes: 3, plats: 2, crumble: 3, spring: 1, drop: 1, mover: 2, dashgap: 3, updash: 2, crystal: 3, climb: 2, ice: 3, tower: 2, keygate: 1, switches: 1 },
   // Act II
-  { gap: 3, steps: 1, spikes: 3, plats: 2, crumble: 2, spring: 1, drop: 1, mover: 2, dashgap: 3, updash: 2, crystal: 3, climb: 2 },
-  { gap: 2, steps: 1, spikes: 2, plats: 2, crumble: 4, spring: 2, drop: 2, mover: 1, dashgap: 2, updash: 2, crystal: 4, climb: 3 },
-  { gap: 3, steps: 1, spikes: 3, plats: 3, crumble: 2, spring: 1, drop: 1, mover: 3, dashgap: 3, updash: 1, crystal: 2, climb: 1 },
-  { gap: 2, steps: 1, spikes: 2, plats: 2, crumble: 2, spring: 1, drop: 1, mover: 2, dashgap: 3, updash: 2, crystal: 3, climb: 2, ice: 5 },
-  { gap: 2, steps: 1, spikes: 3, plats: 2, crumble: 3, spring: 1, drop: 1, mover: 2, dashgap: 4, updash: 2, crystal: 4, climb: 2, ice: 3 },
+  { gap: 3, steps: 1, spikes: 3, plats: 2, crumble: 2, spring: 1, drop: 1, mover: 2, dashgap: 3, updash: 2, crystal: 3, climb: 2, tower: 2, keygate: 1, switches: 1 },
+  { gap: 2, steps: 1, spikes: 2, plats: 2, crumble: 4, spring: 2, drop: 2, mover: 1, dashgap: 2, updash: 2, crystal: 4, climb: 3, tower: 2, keygate: 1, switches: 1 },
+  { gap: 3, steps: 1, spikes: 3, plats: 3, crumble: 2, spring: 1, drop: 1, mover: 3, dashgap: 3, updash: 1, crystal: 2, climb: 1, tower: 2, keygate: 1, switches: 1 },
+  { gap: 2, steps: 1, spikes: 2, plats: 2, crumble: 2, spring: 1, drop: 1, mover: 2, dashgap: 3, updash: 2, crystal: 3, climb: 2, ice: 5, tower: 2, keygate: 1, switches: 1 },
+  { gap: 2, steps: 1, spikes: 3, plats: 2, crumble: 3, spring: 1, drop: 1, mover: 2, dashgap: 4, updash: 2, crystal: 4, climb: 2, ice: 3, tower: 2, keygate: 1, switches: 1 },
 ];
 
 function generateStage(chapter, stage, index) {
@@ -432,7 +539,7 @@ function generateStage(chapter, stage, index) {
   // spikes, short crumbling bridges and shorter stages.
   const act2 = chapter >= 5;
   const d = chapter === 0 ? stage / 60 : act2 ? Math.min(1, 0.8 + (chapter - 5) * 0.05 + stage * 0.005) : Math.min(1, (chapter * 10 + stage) / 45);
-  const count = chapter === 0 ? 8 + stage : act2 ? 16 + Math.round(stage * 1.5) + (chapter - 5) * 3 : 12 + Math.round(stage * 1.5) + chapter * 3;
+  const count = chapter === 0 ? 10 + Math.round(stage * 1.3) : act2 ? 22 + stage * 2 + (chapter - 5) * 3 : 16 + stage * 2 + chapter * 3;
   const final = false; // the Everflame now waits in the boss arena
   const def = {
     id: 'c' + (chapter + 1) + 's' + (stage + 1),
@@ -441,23 +548,30 @@ function generateStage(chapter, stage, index) {
     objective: final ? 'REACH THE EVERFLAME' : 'REACH THE FLAG',
     wind: !!ch.wind, rain: !!ch.rain, tint: ch.tint,
     width: 0,
-    build(b) {
+    build(rawB) {
       const r = mulberry32(seed); // fresh every build so the layout never changes
+      def.chunkLog = [];
+      // Chunks work in a 15-row "band"; g.base shifts the band up as the stage climbs.
       const g = {
-        b, r, d, x: 0, y: 13, emberChance: 0.22 + d * 0.1,
+        r, d, x: 0, y: 13, base: def.base0 || 0, minRow: 0, chapter, chunkNo: 0, emberChance: 0.22 + d * 0.1,
+        rebase() {
+          if (this.y < TOP_ROW + 2) { const s = 10 - this.y; this.base -= s; this.y += s; }
+        },
         int: (a, z) => a + Math.floor(r() * (z - a + 1)),
         pick: (arr) => arr[Math.floor(r() * arr.length)],
         setY(y) { this.y = Math.max(TOP_ROW, Math.min(LOW_ROW, y)); },
-        floor(len) { b.ground(this.x, this.x + len - 1, this.y); this.x += len; },
+        floor(len) { this.b.ground(this.x, this.x + len - 1, this.y); this.x += len; },
         // jump a gap; rises are capped so the jump stays possible
         hop(w, dy, ember) {
           const maxRise = w >= 3 ? 1 : 2;
           const oldY = this.y;
           this.x += w;
           this.setY(this.y + Math.max(-maxRise, dy));
-          if (ember && r() < this.emberChance) b.ember(this.x - Math.ceil(w / 2), Math.min(oldY, this.y) - 2);
+          if (ember && r() < this.emberChance) this.b.ember(this.x - Math.ceil(w / 2), Math.min(oldY, this.y) - 2);
         },
       };
+      g.b = offsetBuilder(rawB, () => g.base, (row) => { g.minRow = Math.min(g.minRow, row); });
+      const b = g.b;
       b.start(2, 12);
       g.floor(8);
       if (stage === 0 && ch.wind) b.sign(5, 12, 'GUSTS PUSH YOU BACK.\nJUMP WHEN THE WIND DIES DOWN!');
@@ -476,7 +590,11 @@ function generateStage(chapter, stage, index) {
           name = names.find((n) => (roll -= weights[n]) < 0) || names[0];
         } while (name === last && names.length > 1);
         last = name;
+        g.chunkNo = i;
+        if ((name === 'keygate' || name === 'switches') && chapter === 0 && stage < 3) name = 'gap'; // puzzles from 1-4
+        const cx0 = g.x;
         CHUNKS[name](g);
+        def.chunkLog.push([name, cx0, g.x]); // which section is where (used by the test tools)
         if (g.x > 2 && i % 3 === 2) b.checkpoint(g.x - 2, g.y - 1);
         if (i === fragAt) b.fragment(g.x - 3, g.y - 1, DIARY[chapter][Math.floor(stage / 2)]);
         if (i === watcherAt) b.watcher(g.x - 1, g.y - 1, WHISPERS[chapter][(stage / 2 - 1) % 4 | 0]);
@@ -486,11 +604,33 @@ function generateStage(chapter, stage, index) {
       if (final) b.everflame(x0 + 8, g.y - 1);
       else b.flag(x0 + 8, g.y - 1);
       def.width = g.x;
+      def.minRow = g.minRow;
     },
   };
-  // work out the width by doing a dry build
+  // Dry build: works out the width and how high the stage climbs, then size it.
+  buildLevelDry(def);
+  def.base0 = Math.max(0, 4 - def.minRow); // keep a few rows of sky above the highest point
+  def.rows = ROWS + def.base0;
   buildLevelDry(def);
   return def;
+}
+
+// Rows passed to the builder are band rows; add the band offset.
+const ROW_ARGS = {
+  start: [1], ground: [2], plat: [1], crumble: [1], spikes: [1], sign: [1], checkpoint: [1], spring: [1],
+  crystal: [1], ember: [1], mover: [2], flag: [1], everflame: [1], ice: [1], ladder: [1, 2], fragment: [1],
+  watcher: [1], key: [1], gate: [1, 2], orb: [1], blue: [2, 3], red: [2, 3],
+};
+function offsetBuilder(b, getBase, onRow) {
+  const o = {};
+  for (const k in ROW_ARGS) {
+    o[k] = (...a) => {
+      const base = getBase();
+      for (const i of ROW_ARGS[k]) { a[i] += base; onRow(a[i]); }
+      return b[k](...a);
+    };
+  }
+  return o;
 }
 
 function buildLevelDry(def) {
