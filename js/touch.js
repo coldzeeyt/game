@@ -109,14 +109,18 @@
   document.body.appendChild(rotate);
 
   const P = SCALE * 20;
+  const BIG_H = SCALE * 36;
+  // D-pad on the middle of the left edge, JUMP / DASH on the middle of the right edge,
+  // so the bottom corners (and the menus there) stay free.
+  const mid = (dy) => `top:calc(50% + ${dy}px)`;
   // [action, css position, class, normal face, pressed face]
   const buttons = [
-    ['left', `left:16px;bottom:${16 + P}px`, 'pad', squareFace(arrow('left'), false), squareFace(arrow('left'), true)],
-    ['right', `left:${16 + P * 2}px;bottom:${16 + P}px`, 'pad', squareFace(arrow('right'), false), squareFace(arrow('right'), true)],
-    ['up', `left:${16 + P}px;bottom:${16 + P * 2}px`, 'pad', squareFace(arrow('up'), false), squareFace(arrow('up'), true)],
-    ['down', `left:${16 + P}px;bottom:16px`, 'pad', squareFace(arrow('down'), false), squareFace(arrow('down'), true)],
-    ['jump', 'right:12px;bottom:20px', 'big', roundFace('JUMP', '#d82800', '#881400', false), roundFace('JUMP', '#d82800', '#881400', true)],
-    ['dash', `right:${24 + SCALE * 34}px;bottom:${36 + SCALE * 22}px`, 'big', roundFace('DASH', '#0058f8', '#0000bc', false), roundFace('DASH', '#0058f8', '#0000bc', true)],
+    ['up', `left:${16 + P}px;${mid(-P * 1.5)}`, 'pad', squareFace(arrow('up'), false), squareFace(arrow('up'), true)],
+    ['left', `left:16px;${mid(-P / 2)}`, 'pad', squareFace(arrow('left'), false), squareFace(arrow('left'), true)],
+    ['right', `left:${16 + P * 2}px;${mid(-P / 2)}`, 'pad', squareFace(arrow('right'), false), squareFace(arrow('right'), true)],
+    ['down', `left:${16 + P}px;${mid(P / 2)}`, 'pad', squareFace(arrow('down'), false), squareFace(arrow('down'), true)],
+    ['dash', `right:${20 + SCALE * 30}px;${mid(-BIG_H + 4)}`, 'big', roundFace('DASH', '#0058f8', '#0000bc', false), roundFace('DASH', '#0058f8', '#0000bc', true)],
+    ['jump', `right:12px;${mid(-8)}`, 'big', roundFace('JUMP', '#d82800', '#881400', false), roundFace('JUMP', '#d82800', '#881400', true)],
     ['pause', 'right:16px;top:16px', 'pad', squareFace(pauseIcon, false), squareFace(pauseIcon, true)],
   ];
 
