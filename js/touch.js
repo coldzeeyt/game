@@ -14,12 +14,25 @@
     #touch button.on { background: rgba(60, 188, 252, 0.55); }
     #touch .pad { width: 58px; height: 58px; }
     #touch .big { width: 76px; height: 76px; border-radius: 50%; }
+    #rotate { display: none; position: fixed; inset: 0; z-index: 10; background: #0c0828;
+      color: #a4e4fc; font: bold 16px monospace; letter-spacing: 2px;
+      flex-direction: column; align-items: center; justify-content: center; gap: 24px; }
+    #rotate .phone { width: 40px; height: 70px; border: 4px solid #a4e4fc; border-radius: 8px;
+      animation: turn 1.6s ease-in-out infinite; }
+    @keyframes turn { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+    @media (orientation: portrait) and (max-width: 900px) { #rotate { display: flex; } }
   `;
   document.head.appendChild(style);
 
   const root = document.createElement('div');
   root.id = 'touch';
   document.body.appendChild(root);
+
+  // Phones held upright: ask to rotate (the game is widescreen).
+  const rotate = document.createElement('div');
+  rotate.id = 'rotate';
+  rotate.innerHTML = '<div class="phone"></div><div>ROTATE YOUR DEVICE</div>';
+  document.body.appendChild(rotate);
 
   // [label, key code, css position, class]
   const buttons = [

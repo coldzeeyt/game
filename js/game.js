@@ -286,7 +286,8 @@
     },
   };
 
-  const DOWNLOAD_URL = 'https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice-Windows.zip';
+  const DOWNLOAD_URL = 'https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice.exe';
+  const ANDROID_URL = 'https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice-Android.apk';
 
   const Title = {
     enter() {
@@ -301,11 +302,14 @@
         { id: 'settings', label: 'SETTINGS' },
         { id: 'credits', label: 'CREDITS' },
       );
-      // In a desktop web browser, offer the Windows app (built by GitHub Actions).
-      const isApp = /Electron/i.test(navigator.userAgent);
+      // In a web browser, offer the app for this device (built by GitHub Actions).
+      const ua = navigator.userAgent;
+      const isApp = /Electron/i.test(ua) || !!window.Capacitor;
       const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      if (!isApp && !isTouch) items.splice(items.length - 2, 0, { id: 'download', label: 'DOWNLOAD FOR PC' });
-      this.menu = makeMenu(items, 102, 15);
+      if (!isApp && !isTouch) items.splice(items.length - 2, 0, { id: 'download', label: 'DOWNLOAD FOR PC', url: DOWNLOAD_URL });
+      if (!isApp && /Android/i.test(ua)) items.splice(items.length - 2, 0, { id: 'download', label: 'DOWNLOAD FOR ANDROID', url: ANDROID_URL });
+      items.push({ id: 'more', label: 'MORE' });
+      this.menu = makeMenu(items, 98, items.length > 8 ? 14 : 15);
     },
     update() {
       titleUpdate();
@@ -314,7 +318,8 @@
       if (c.id === 'continue') startLevel(LEVELS[this.save.level], this.save);
       else if (c.id === 'guide') setScene(Guide);
       else if (c.id === 'lore') setScene(Lore);
-      else if (c.id === 'download') window.open(DOWNLOAD_URL, '_blank', 'noopener');
+      else if (c.id === 'download') window.open(c.url, '_blank', 'noopener');
+      else if (c.id === 'more') setScene(More);
       else if (c.id === 'new') setScene(Story);
       else if (c.id === 'tutorial') startLevel(LEVELS.tutorial);
       else if (c.id === 'settings') setScene(Settings);
@@ -323,7 +328,7 @@
     draw() {
       drawTitleBackdrop();
       drawLogo();
-      const top = this.menu.y - 8, h = this.menu.items.length * 15 + 10;
+      const top = this.menu.y - 8, h = this.menu.items.length * this.menu.spacing + 10;
       ctx.fillStyle = 'rgba(8,6,28,0.6)';
       ctx.fillRect(W / 2 - 64, top, 128, h);
       ctx.fillStyle = '#342468';
@@ -656,6 +661,21 @@
     }
     return false;
   }
+
+  // Placeholder for extra content later on.
+  const More = {
+    menu: makeMenu([{ id: 'back', label: 'BACK' }], 170),
+    update() { titleUpdate(); backOnly(this.menu); },
+    draw() {
+      drawTitleBackdrop();
+      panel(W / 2 - 90, 70, 180, 124);
+      drawTextOutlined(ctx, 'MORE', W / 2, 84, PAL.C, 2, 'center');
+      drawText(ctx, 'COMING SOON!', W / 2, 118, PAL.w, 1, 'center');
+      drawText(ctx, 'NEW STAGES, SECRETS AND', W / 2, 134, PAL.m, 1, 'center');
+      drawText(ctx, 'EXTRAS WILL SHOW UP HERE.', W / 2, 144, PAL.m, 1, 'center');
+      this.menu.draw();
+    },
+  };
 
   const Credits = {
     menu: makeMenu([{ id: 'back', label: 'BACK' }], 212),
@@ -1454,7 +1474,7 @@
   }
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { Splash, Title, Settings, Guide, Lore, Credits, Play }, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { Splash, Title, Settings, Guide, Lore, Credits, More, Play }, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

@@ -6,6 +6,34 @@
   "author": "ColdzeeYT",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.coldzeeyt.precipice",
+    "productName": "Precipice",
+    "copyright": "ColdzeeYT",
+    "files": [
+      "index.html",
+      "main.js",
+      "package.json",
+      "icon.png",
+      "icon.ico",
+      "manifest.webmanifest",
+      "icons/**",
+      "js/**",
+      "assets/**"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "icon.ico"
+    },
+    "portable": {
+      "artifactName": "Precipice.exe"
+    }
   }
 }

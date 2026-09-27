@@ -21,28 +21,34 @@ python3 -m http.server 8000
 # then visit http://localhost:8000
 ```
 
-### Desktop app (Electron)
+### Download
 
-`main.js` + `package.json` make this folder an Electron app:
+Every push to `main` builds the apps with GitHub Actions (`.github/workflows/build.yml`) and
+publishes them as the latest release:
+
+- **Windows:** [Precipice.exe](https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice.exe)
+  (one portable file, everything packed inside; just run it)
+- **Android:** [Precipice-Android.apk](https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice-Android.apk)
+- **iPhone / any phone:** open the GitHub Pages site and use *Add to Home Screen*. It installs as a
+  full-screen app that also works offline.
+
+The title screen shows **Download for PC** (desktop browsers) or **Download for Android**
+(Android browsers).
+
+### Desktop app (Electron) from source
 
 ```sh
-npx electron .                      # run it
-npx @electron/packager . Precipice --platform=win32 --arch=x64 --icon=icon.ico   # build Precipice.exe
+npm install
+npm start       # run it
+npm run dist    # build dist/Precipice.exe (on Windows)
 ```
 
 F11 toggles fullscreen in the desktop app.
 
-Every push to `main` also builds the Windows app with GitHub Actions
-(`.github/workflows/build-windows.yml`) and publishes it as the latest release:
-https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice-Windows.zip
-(the **Download for PC** button on the title screen links there).
-
 ### Phones & tablets
 
 On touch screens, on-screen buttons appear: a D-pad (move / aim dash), **JUMP**, **DASH**
-and **II** (pause / back). Tap menu items to pick them.
-
-The game renders at 480×270 and scales up in whole steps to fill the window (4× = 1920×1080).
+and **II** (pause / back). Tap menu items to pick them. Hold the phone sideways.
 
 ## Controls
 
@@ -86,6 +92,7 @@ Touching a checkpoint saves your game (checkpoint, embers, memory fragments, dea
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Potato* → *Toaster* → *Grandma's Laptop* → *Gamer Rig* → *NASA PC*
 - **Credits**
+- **More**: placeholder for future extras
 
 ## Credits
 
@@ -98,6 +105,8 @@ Touching a checkpoint saves your game (checkpoint, embers, memory fragments, dea
 ```
 index.html          page + canvas
 main.js             Electron entry point (desktop app)
+manifest.webmanifest, sw.js   installable / offline web app
+js/touch.js         on-screen buttons for phones
 icon.png / .ico     app icon (a memory fragment)
 js/config.js        settings: resolution, graphics presets, volume
 js/font.js          5x7 and 3x5 bitmap pixel fonts

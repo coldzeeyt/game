@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Precipice</title>
   <link rel="icon" href="icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="theme-color" content="#0c0828">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <style>
     html, body {
       margin: 0;
@@ -60,5 +66,11 @@
   <script src="js/levels.js"></script>
   <script src="js/game.js"></script>
   <script src="js/touch.js"></script>
+  <script>
+    // Installable / offline web app (skipped in the desktop and Android apps).
+    if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.Capacitor) {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    }
+  </script>
 </body>
 </html>
