@@ -570,7 +570,7 @@
     ice: (x, y) => ctx.drawImage(TILES.ice, x - 8, y - 8),
     saw: (x, y) => Play.drawSaw(x, y),
     key: (x, y) => Play.drawKey(x, y),
-    gate: (x, y) => { Play.drawGateTile(x - 8, y - 4, false); },
+    gate: (x, y) => { Play.drawGateTile(x - 8, y - 8, true, true); },
     orb: (x, y) => Play.drawOrb(x, y),
     blocks: (x, y) => { Play.drawSwitchBlock(x - 16, y - 8, 'B', true); Play.drawSwitchBlock(x, y - 8, 'B', false); },
     vent: (x, y) => { Play.drawVent({ x: (x - 8) / T, y: (y + 8) / T, phase: 60 }); },
@@ -2203,7 +2203,7 @@
           if (t === '#') drawGround(px, py, tx, ty, isGround); else if (t === '=') ctx.drawImage(TILES.brick, px, py);
           else if (t === 'i') ctx.drawImage(TILES.ice, px, py);
           else if (t === 'H') ctx.drawImage(TILES.ladder, px, py);
-          else if (t === 'G') this.drawGateTile(px, py, this.tileAt(tx, ty + 1) !== 'G');
+          else if (t === 'G') this.drawGateTile(px, py, this.tileAt(tx, ty + 1) !== 'G', this.tileAt(tx, ty - 1) !== 'G');
           else if (t === 'B' || t === 'R') this.drawSwitchBlock(px, py, t, this.solidAt(tx, ty));
           else if (t === '^') ctx.drawImage(TILES.spike, px, py);
           else if (t === 'c') {
@@ -2505,16 +2505,56 @@
       }
     },
 
-    drawGateTile(px, py, bottom) {
-      ctx.fillStyle = '#2c2c3c'; ctx.fillRect(px + 1, py, 14, 16);
-      ctx.fillStyle = PAL.m; for (let i = 2; i < 15; i += 4) ctx.fillRect(px + i, py, 2, 16);
-      ctx.fillStyle = PAL.l; ctx.fillRect(px + 1, py + 7, 14, 2);
-      if (bottom) {
-        // padlock near the ground
-        ctx.fillStyle = PAL.y; ctx.fillRect(px + 4, py - 8, 8, 6);
-        ctx.fillStyle = PAL.y; ctx.fillRect(px + 5, py - 11, 1, 3); ctx.fillRect(px + 10, py - 11, 1, 3); ctx.fillRect(px + 5, py - 12, 6, 1);
-        ctx.fillStyle = PAL.D; ctx.fillRect(px + 7, py - 6, 2, 2);
+    drawGateTile(px, py, bottom, top) {
+      // iron portcullis: a heavy frame, round bars and a riveted band every few tiles
+      ctx.fillStyle = 'rgba(12,8,24,0.7)'; ctx.fillRect(px, py, 16, 16);
+      for (const bx of [4, 8, 11]) {
+        ctx.fillStyle = '#4c4c64'; ctx.fillRect(px + bx, py, 2, 16);
+        ctx.fillStyle = '#9c9cb8'; ctx.fillRect(px + bx, py, 1, 16);
       }
+      ctx.fillStyle = '#2c2c3c'; ctx.fillRect(px, py, 3, 16); ctx.fillRect(px + 13, py, 3, 16);
+      ctx.fillStyle = '#6c6c88'; ctx.fillRect(px + 1, py, 1, 16); ctx.fillRect(px + 14, py, 1, 16);
+      const band = (y) => {
+        ctx.fillStyle = '#2c2c3c'; ctx.fillRect(px, y, 16, 3);
+        ctx.fillStyle = '#6c6c88'; ctx.fillRect(px, y, 16, 1);
+        ctx.fillStyle = '#bcbcd8'; ctx.fillRect(px + 1, y + 1, 1, 1); ctx.fillRect(px + 14, y + 1, 1, 1);
+      };
+      if (top) {
+        band(py);
+        ctx.fillStyle = '#9c9cb8'; for (const bx of [4, 8, 11]) { ctx.fillRect(px + bx, py - 3, 2, 3); ctx.fillRect(px + bx - 1, py - 1, 4, 1); } // spikes
+      } else if (Math.round(py / 16) % 3 === 0) band(py + 6);
+      if (bottom) { band(py + 13); this.drawPadlock(px + 1, py - 4); }
+    },
+
+    // golden padlock with a steel shackle and a keyhole
+    drawPadlock(x, y) {
+      const PADLOCK = [
+        '....xxxxxx....',
+        '...xsSSSSsx...',
+        '..xsxxxxxxsx..',
+        '..xSx....xSx..',
+        '..xSx....xSx..',
+        '..xsx....xsx..',
+        'xxxxxxxxxxxxxx',
+        'xhhhhhhhhhhhhx',
+        'xyyyyxxxxyyyyx',
+        'xyyyyxxxxyyyyx',
+        'xyyyyyxxyyyyyx',
+        'xyyyyyxxyyyyyx',
+        'xyyyyyxxyyyyyx',
+        'xddddddddddddx',
+        'xxxxxxxxxxxxxx',
+      ];
+      const col = { x: '#0c0818', s: '#9c9cb8', S: '#fcfcfc', h: '#fce0a8', y: PAL.y, d: '#ac7c00' };
+      const bob = Math.round(Math.sin(frame / 20) * 0.6);
+      PADLOCK.forEach((row, j) => {
+        for (let i = 0; i < row.length; i++) {
+          if (row[i] === '.') continue;
+          ctx.fillStyle = col[row[i]];
+          ctx.fillRect(x + i, y + j + bob, 1, 1);
+        }
+      });
+      if (frame % 90 < 6) { ctx.fillStyle = PAL.w; ctx.fillRect(x + 2, y + 8 + bob, 1, 2); } // glint
     },
 
     drawSwitchBlock(px, py, t, solid) {
