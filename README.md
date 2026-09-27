@@ -151,8 +151,8 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*,
-  key bindings (Controls) and the **Changelog** (what's new in each update)
-- **Credits**
+  and key bindings (Controls)
+- **Credits**, plus the **Changelog** (what's new in each update)
 - **Account** (bottom left): sign up / log in / log out, and save or load your saves in the cloud
 - **More** (bottom right): Hardcore mode, and **Multiplayer** (make a room and race your friends with its 4-letter code)
 - Use LEFT / RIGHT on the menu to reach the two corner buttons

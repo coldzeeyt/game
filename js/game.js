@@ -753,7 +753,7 @@
   const Guide = makeBook(GUIDE);
   const Lore = makeBook(LORE);
 
-  // What's new, newest first (Settings > Changelog).
+  // What's new, newest first (Credits > Changelog).
   const CHANGELOG = [
     { title: 'UPDATE 1.6', text: [
       'PLATFORMS & ACCOUNTS', '',
@@ -810,7 +810,7 @@
       '- MUSIC: SILVER HAND MAN BY VIRAXOR',
     ] },
   ];
-  const Changelog = makeBook(CHANGELOG, () => Settings);
+  const Changelog = makeBook(CHANGELOG, () => Credits);
 
   // Settings: resolution, fullscreen, graphics preset and volume (saved).
   function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
@@ -831,7 +831,7 @@
   }
 
   const Settings = {
-    rows: ['res', 'full', 'gfx', 'music', 'sfx', 'controls', 'changelog', 'back'],
+    rows: ['res', 'full', 'gfx', 'music', 'sfx', 'controls', 'back'],
     enter() { this.index = 0; },
     change(row, dir) {
       if (row === 'res') Config.res = (Config.res + dir + RESOLUTIONS.length) % RESOLUTIONS.length;
@@ -843,7 +843,7 @@
       Config.save();
       Sound.sfx('move');
     },
-    rowY(i) { return 58 + i * 21; },
+    rowY(i) { return 60 + i * 24; },
     update() {
       titleUpdate();
       const n = this.rows.length;
@@ -861,7 +861,6 @@
             this.index = i;
             if (this.rows[i] === 'back') { Sound.sfx('select'); setScene(Title); return; }
             if (this.rows[i] === 'controls') { Sound.sfx('select'); setScene(Controls); return; }
-            if (this.rows[i] === 'changelog') { Sound.sfx('select'); setScene(Changelog); return; }
             this.change(this.rows[i], m.x < W / 2 + 40 ? -1 : 1);
           }
         }
@@ -869,7 +868,6 @@
       if (hit(...K.ok)) {
         if (row === 'back') { Sound.sfx('select'); setScene(Title); return; }
         if (row === 'controls') { Sound.sfx('select'); setScene(Controls); return; }
-        if (row === 'changelog') { Sound.sfx('select'); setScene(Changelog); return; }
         this.change(row, 1);
       }
       if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); }
@@ -897,10 +895,9 @@
           drawText(ctx, (sel ? '> ' : '') + 'BACK' + (sel ? ' <' : ''), W / 2, y, sel ? PAL.c : '#b8c4f0', 1, 'center');
           return;
         }
-        if (row === 'controls' || row === 'changelog') {
-          drawText(ctx, row === 'controls' ? 'CONTROLS' : 'CHANGELOG', W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
-          const what = row === 'controls' ? 'CHANGE KEYS' : "WHAT'S NEW";
-          drawText(ctx, (sel ? '> ' : '  ') + what + (sel ? ' <' : '  '), W / 2 + 80, y, PAL.w, 1, 'center');
+        if (row === 'controls') {
+          drawText(ctx, 'CONTROLS', W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
+          drawText(ctx, (sel ? '> ' : '  ') + 'CHANGE KEYS' + (sel ? ' <' : '  '), W / 2 + 80, y, PAL.w, 1, 'center');
           return;
         }
         drawText(ctx, labels[row], W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
@@ -1590,10 +1587,15 @@
   };
 
   const Credits = {
-    menu: makeMenu([{ id: 'back', label: 'BACK' }], 224),
-    update() { titleUpdate(); backOnly(this.menu); },
+    menu: makeMenu([{ id: 'changelog', label: 'CHANGELOG' }, { id: 'back', label: 'BACK' }], 216, 14),
+    update() {
+      titleUpdate();
+      const c = this.menu.update();
+      if (c && c.id === 'changelog') setScene(Changelog);
+      else if (c || hit(...K.back)) { if (!c) Sound.sfx('select'); setScene(Title); }
+    },
     draw() {
-      let y = subScreen('CREDITS');
+      let y = subScreen('CREDITS', 240);
       const rows = [
         ['GAME & DESIGN', 'ColdzeeYT'],
         ['MUSIC', 'SILVER HAND MAN - VIRAXOR'],
@@ -1605,7 +1607,7 @@
       for (const [head, ...lines] of rows) {
         drawText(ctx, head, W / 2, y, PAL.c, 1, 'center');
         lines.forEach((l, i) => drawText(ctx, l, W / 2, y + 10 + i * 10, PAL.w, 1, 'center'));
-        y += 11 + lines.length * 10;
+        y += 13 + lines.length * 10;
       }
       this.menu.draw();
     },
