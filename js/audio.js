@@ -4,6 +4,14 @@ const TITLE_TRACKS = [
   'assets/music/dream-girl.mp3',
 ];
 
+// Older browser engines (e.g. some desktop wrappers) return nothing from play().
+function safePlay(audio) {
+  try {
+    const p = audio.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) { /* ignore */ }
+}
+
 const Sound = {
   ctx: null,
   music: null,
@@ -11,21 +19,33 @@ const Sound = {
   fade: null,
   musicVolume: 0.55,
 
+  // Start downloading the title music right away (playing it still needs a user gesture).
+  preload() {
+    if (!this.music) {
+      this.music = new Audio(TITLE_TRACKS[0]);
+      this.music.preload = 'auto';
+      // When one title song ends, move on to the next (and loop the playlist).
+      this.music.addEventListener('ended', () => {
+        this.track = (this.track + 1) % TITLE_TRACKS.length;
+        this.music.src = TITLE_TRACKS[this.track];
+        safePlay(this.music);
+      });
+    }
+  },
+
   // Must be called from a user gesture (browsers block audio before one).
   init() {
     if (!this.ctx) {
       try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { /* no audio */ }
     }
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
-    if (!this.music) {
-      this.music = new Audio(TITLE_TRACKS[0]);
-      // When one title song ends, move on to the next (and loop the playlist).
-      this.music.addEventListener('ended', () => {
-        this.track = (this.track + 1) % TITLE_TRACKS.length;
-        this.music.src = TITLE_TRACKS[this.track];
-        this.music.play().catch(() => {});
-      });
-    }
+    this.preload();
+  },
+
+  // True while the current song is still downloading / buffering.
+  isLoading() {
+    const m = this.music;
+    return !!m && !m.error && m.networkState !== 3 && m.readyState < 3;
   },
 
   playMusic(restart) {
@@ -37,7 +57,7 @@ const Sound = {
       this.music.currentTime = 0;
     }
     this.music.volume = this.musicVolume;
-    this.music.play().catch(() => {});
+    safePlay(this.music);
   },
 
   fadeOutMusic(ms = 600) {
@@ -63,6 +83,8 @@ const Sound = {
     o.type = type;
     o.frequency.setValueAtTime(f0, t);
     o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    vol *= Config.sfx / 10;
+    if (vol <= 0) return;
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(g).connect(c.destination);
@@ -72,7 +94,8 @@ const Sound = {
 
   noise(dur, vol = 0.08) {
     const c = this.ctx;
-    if (!c) return;
+    vol *= Config.sfx / 10;
+    if (!c || vol <= 0) return;
     const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);

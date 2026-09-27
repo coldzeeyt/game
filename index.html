@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Precipice</title>
+  <link rel="icon" href="icon.png">
   <style>
     html, body {
       margin: 0;
@@ -16,6 +17,20 @@
       align-items: center;
       justify-content: center;
     }
+    /* Spinner shown while the game's files are still loading. */
+    #boot {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: 40px;
+      height: 40px;
+      margin: -20px 0 0 -20px;
+      border: 4px solid #342468;
+      border-top-color: #a4e4fc;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     canvas {
       image-rendering: pixelated;
       image-rendering: crisp-edges;
@@ -24,7 +39,18 @@
   </style>
 </head>
 <body>
+  <div id="boot"></div>
   <canvas id="screen" width="480" height="270"></canvas>
+  <script>
+    // Show errors on screen instead of a silent black window.
+    window.onerror = function (msg, src, line) {
+      var d = document.getElementById('err') || document.body.appendChild(document.createElement('pre'));
+      d.id = 'err';
+      d.style.cssText = 'position:fixed;left:8px;top:8px;right:8px;color:#fc9838;font:14px monospace;white-space:pre-wrap;z-index:9';
+      d.textContent += 'Error: ' + msg + ' (' + (src || '').split('/').pop() + ':' + line + ')\n';
+    };
+  </script>
+  <script src="js/config.js"></script>
   <script src="js/font.js"></script>
   <script src="js/gfx.js"></script>
   <script src="js/audio.js"></script>

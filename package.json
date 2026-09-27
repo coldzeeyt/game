@@ -1,0 +1,11 @@
+{
+  "name": "precipice",
+  "productName": "Precipice",
+  "version": "1.0.0",
+  "description": "An 8-bit platformer by ColdzeeYT",
+  "author": "ColdzeeYT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  }
+}

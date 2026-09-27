@@ -13,12 +13,16 @@
     // Largest whole-number scale that fits (4x = 1920x1080); fall back to a
     // fractional scale on very small windows.
     const fit = Math.min(innerWidth / W, innerHeight / H);
-    const s = fit >= 1 ? Math.floor(fit) : fit;
+    if (!(fit > 0)) return; // window not laid out yet (can happen in desktop wrappers)
+    let s = fit >= 1 ? Math.floor(fit) : fit;
+    const res = RESOLUTIONS[Config.res];
+    if (res.w) s = Math.min(res.w / W, fit); // chosen size, shrunk to fit the window
     canvas.style.width = W * s + 'px';
     canvas.style.height = H * s + 'px';
   }
   addEventListener('resize', resize);
   resize();
+  let lastSize = '';
 
   // ---------------------------------------------------------------- input
   const Input = { down: new Set(), pressed: new Set(), any: false, mouse: { x: -1, y: -1, click: false, moved: false } };
@@ -151,12 +155,14 @@
     // A cliff edge with our hero staring into the abyss.
     const cliff = (x, y) => x >= 0 && x < 6 && y >= 12;
     for (let x = 0; x < 6; x++) for (let y = 12; y < 17; y++) drawGround(x * T, y * T, x, y, cliff);
-    ctx.drawImage(DECO.pine, 17, 12 * T - 25);
-    ctx.drawImage(DECO.bush, 3 * T + 1, 12 * T - 6);
-    ctx.drawImage(DECO.tuft, 6, 12 * T - 3);
-    ctx.drawImage(DECO.tuft, 2 * T + 9, 12 * T - 3);
-    ctx.drawImage(DECO.flowers[0], 4 * T + 10, 12 * T - 4);
-    ctx.drawImage(DECO.rock, 2 * T + 1, 12 * T - 3);
+    if (Config.g.deco) {
+      ctx.drawImage(DECO.pine, 17, 12 * T - 25);
+      ctx.drawImage(DECO.bush, 3 * T + 1, 12 * T - 6);
+      ctx.drawImage(DECO.tuft, 6, 12 * T - 3);
+      ctx.drawImage(DECO.tuft, 2 * T + 9, 12 * T - 3);
+      ctx.drawImage(DECO.flowers[0], 4 * T + 10, 12 * T - 4);
+      ctx.drawImage(DECO.rock, 2 * T + 1, 12 * T - 3);
+    }
     ctx.drawImage(PLAYER_SPR.dash.idle.right, 6 * T - 13, 12 * T - 16);
 
     // Storm: lightning every 10 seconds; the Watcher is only seen in its light.
@@ -176,7 +182,7 @@
   // Animated rain: every drop's position is a pure function of the frame.
   function drawRain() {
     ctx.fillStyle = 'rgba(150,160,230,0.55)';
-    for (let i = 0; i < 140; i++) {
+    for (let i = 0; i < Config.g.rain; i++) {
       const sp = 4 + (decoRoll(i, 1) % 30) / 10;
       const y = (decoRoll(i, 2) * 3 + frame * sp) % (H + 30) - 15;
       const x = ((decoRoll(i, 3) * 5 - y * 0.3) % (W + 40) + W + 40) % (W + 40) - 20;
@@ -240,10 +246,28 @@
     setScene(Title);
   }
 
-  function startLevel(def) {
+  function startLevel(def, save) {
     Sound.fadeOutMusic();
-    setScene(Play, def);
+    setScene(Play, def, save);
   }
+
+  // Save game: written whenever you touch a checkpoint on the climb, so you can
+  // CONTINUE from the title screen later (even after closing the game).
+  const SaveGame = {
+    key: 'precipice.save',
+    load() {
+      try {
+        const data = JSON.parse(localStorage.getItem(this.key));
+        return data && LEVELS[data.level] ? data : null;
+      } catch (e) { return null; }
+    },
+    write(data) {
+      try { localStorage.setItem(this.key, JSON.stringify(data)); return true; } catch (e) { return false; }
+    },
+    clear() {
+      try { localStorage.removeItem(this.key); } catch (e) { /* storage unavailable */ }
+    },
+  };
 
   const Splash = {
     update() {
@@ -263,17 +287,28 @@
   };
 
   const Title = {
-    menu: makeMenu([
-      { id: 'new', label: 'NEW GAME' },
-      { id: 'tutorial', label: 'TUTORIAL' },
-      { id: 'settings', label: 'SETTINGS' },
-      { id: 'credits', label: 'CREDITS' },
-    ], 116, 17),
+    enter() {
+      this.save = SaveGame.load();
+      const items = [];
+      if (this.save) items.push({ id: 'continue', label: 'CONTINUE' });
+      items.push(
+        { id: 'new', label: 'NEW GAME' },
+        { id: 'tutorial', label: 'TUTORIAL' },
+        { id: 'guide', label: 'GUIDE' },
+        { id: 'lore', label: 'LORE' },
+        { id: 'settings', label: 'SETTINGS' },
+        { id: 'credits', label: 'CREDITS' },
+      );
+      this.menu = makeMenu(items, 102, 15);
+    },
     update() {
       titleUpdate();
       const c = this.menu.update();
       if (!c) return;
-      if (c.id === 'new') setScene(Story);
+      if (c.id === 'continue') startLevel(LEVELS[this.save.level], this.save);
+      else if (c.id === 'guide') setScene(Guide);
+      else if (c.id === 'lore') setScene(Lore);
+      else if (c.id === 'new') setScene(Story);
       else if (c.id === 'tutorial') startLevel(LEVELS.tutorial);
       else if (c.id === 'settings') setScene(Settings);
       else if (c.id === 'credits') setScene(Credits);
@@ -281,11 +316,12 @@
     draw() {
       drawTitleBackdrop();
       drawLogo();
+      const top = this.menu.y - 8, h = this.menu.items.length * 15 + 10;
       ctx.fillStyle = 'rgba(8,6,28,0.6)';
-      ctx.fillRect(W / 2 - 64, 106, 128, 76);
+      ctx.fillRect(W / 2 - 64, top, 128, h);
       ctx.fillStyle = '#342468';
-      ctx.fillRect(W / 2 - 64, 106, 128, 1);
-      ctx.fillRect(W / 2 - 64, 181, 128, 1);
+      ctx.fillRect(W / 2 - 64, top, 128, 1);
+      ctx.fillRect(W / 2 - 64, top + h - 1, 128, 1);
       this.menu.draw();
     },
   };
@@ -304,13 +340,13 @@
     enter() { this.page = 0; this.t = 0; },
     update() {
       this.t++;
-      if (hit('Escape')) { Sound.sfx('select'); startLevel(LEVELS.stage1); return; }
+      if (hit('Escape')) { Sound.sfx('select'); SaveGame.clear(); startLevel(LEVELS.stage1); return; }
       if (hit(...K.ok) || Input.mouse.click) {
         const len = STORY[this.page].text.length;
         if (this.t * TYPE_SPEED < len) { this.t = Math.ceil(len / TYPE_SPEED); return; }
         this.page++;
         this.t = 0;
-        if (this.page >= STORY.length) { Sound.sfx('select'); startLevel(LEVELS.stage1); } else Sound.sfx('move');
+        if (this.page >= STORY.length) { Sound.sfx('select'); SaveGame.clear(); startLevel(LEVELS.stage1); } else Sound.sfx('move');
       }
     },
     draw() {
@@ -361,25 +397,239 @@
     },
   };
 
-  // Placeholder settings screen.
+  // ---------------------------------------------------------------- guide
+  // Icons reuse the in-game drawing code; (x, y) is the icon's centre.
+  const at = (x, y) => ({ x: (x - 8) / T, y: (y - 8) / T });
+  const ICONS = {
+    ember: (x, y) => Play.drawEmber(at(x, y)),
+    fragment: (x, y) => ctx.drawImage(FRAGMENT_SPR, x - 6, y - 7),
+    checkpoint: (x, y) => ctx.drawImage(CHECKPOINT_SPR.on, x - 8, y - 14),
+    crystal: (x, y) => Play.drawCrystal(Object.assign(at(x, y), { gone: 0 })),
+    spring: (x, y) => Play.drawSpring(Object.assign(at(x, y - 4), { t: 0 })),
+    crumble: (x, y) => ctx.drawImage(TILES.crumble, x - 8, y - 8),
+    mover: (x, y) => Play.drawMover({ x: x - 16, y: y - 4, w: 32, h: 8 }),
+    spikes: (x, y) => ctx.drawImage(TILES.spike, x - 8, y - 12),
+  };
+  const GUIDE = [
+    { title: 'YOUR GOAL', text: [
+      'REACH THE FLAG AT THE END OF EACH STAGE.',
+      'EVERY STAGE TAKES YOU HIGHER UP THE MOUNTAIN,',
+      'AND THE EVERFLAME WAITS AT THE SUMMIT.',
+      '',
+      'FALLING OFF A PRECIPICE OR TOUCHING SPIKES',
+      'SENDS YOU BACK TO YOUR LAST CHECKPOINT.',
+      '',
+      'CHECKPOINTS ALSO SAVE YOUR GAME. PICK CONTINUE',
+      'ON THE TITLE SCREEN TO CARRY ON LATER.',
+    ] },
+    { title: 'COLLECTABLES', items: [
+      ['ember', 'EMBERS', 'SPARKS OF THE EVERFLAME. OPTIONAL, AND OFTEN', 'TUCKED AWAY IN HARD-TO-REACH SPOTS.'],
+      ['fragment', 'MEMORY FRAGMENTS', "GLOWING RUNE STONES HOLDING PAGES OF ASH'S", 'DIARY. FIND THEM ALL TO LEARN THE TRUTH.'],
+    ] },
+    { title: 'THE MOUNTAIN', items: [
+      ['checkpoint', 'CHECKPOINTS', 'RESPAWN HERE AND SAVE YOUR PROGRESS.'],
+      ['crystal', 'DASH CRYSTALS', 'REFILL YOUR DASH IN MID-AIR.'],
+      ['spring', 'SPRINGS', 'LAUNCH YOU SKY HIGH AND REFILL YOUR DASH.'],
+      ['crumble', 'CRUMBLING BLOCKS', 'FALL AWAY SOON AFTER YOU LAND ON THEM.'],
+      ['mover', 'MOVING PLATFORMS', 'RIDE THEM ACROSS WIDE GAPS.'],
+      ['spikes', 'SPIKES', 'DEADLY TO THE TOUCH. JUMP OVER THEM.'],
+    ] },
+    { title: 'CONTROLS', text: [
+      'A / D ........... MOVE',
+      'SPACE ........... JUMP (HOLD TO JUMP HIGHER)',
+      'SHIFT ........... DASH (AIM WITH W A S D)',
+      'INTO A WALL ..... SLIDE DOWN IT',
+      'SPACE ON A WALL . WALL JUMP',
+      'ESC ............. PAUSE',
+      'F11 ............. FULLSCREEN (DESKTOP APP)',
+    ] },
+  ];
+
+  const LORE = [
+    { title: 'MOUNT PRECIPICE', text: [
+      'MOUNT PRECIPICE RISES ABOVE THE CLOUDS, SO TALL',
+      'THAT NO MAP HAS EVER SHOWN ITS PEAK. ITS CLIFFS',
+      'ARE STEEP, ITS STORMS ARE CRUEL, AND ITS PATHS',
+      'SEEM TO SHIFT WHEN NO ONE IS LOOKING.',
+      '',
+      'AT THE VERY TOP BURNS THE EVERFLAME. LEGEND SAYS',
+      'ANYONE WHO REACHES IT MAY MAKE ONE WISH, BUT NO',
+      'ONE WHO HAS CLIMBED FOR IT HAS EVER RETURNED.',
+    ] },
+    { title: 'ASH', text: [
+      'ASH WAS THE BRAVEST CLIMBER THE VALLEY EVER KNEW.',
+      'ASH WORE A RED CAP, CARRIED A NOTEBOOK, AND SPOKE',
+      'OF THE EVERFLAME AS IF IT WERE CALLING.',
+      '',
+      'ONE WINTER MORNING ASH SET OFF ALONE. FOR DAYS A',
+      'SMALL LIGHT COULD BE SEEN MOVING UP THE CLIFFS.',
+      'THEN ONE NIGHT THE LIGHT WENT OUT.',
+      'ONLY THE RED CAP EVER CAME BACK DOWN.',
+    ] },
+    { title: 'MEMORY FRAGMENTS', text: [
+      'AS ASH CLIMBED, ASH WROTE. PAGES OF THAT DIARY',
+      'ARE CARVED INTO STONES ALONG THE WAY, BY ASH OR',
+      'BY SOMETHING ELSE. EACH FRAGMENT GLOWS VIOLET AND',
+      'HOLDS A FEW WORDS FROM THE CLIMB.',
+      '',
+      'READ TOGETHER, THEY TELL WHAT REALLY HAPPENED ON',
+      'THE MOUNTAIN. SOME ARE HIDDEN OFF THE BEATEN PATH.',
+      'FIND THEM ALL IF YOU WANT THE TRUTH.',
+    ] },
+    { title: 'THE WATCHER', text: [
+      'A SHAPE STANDS ON THE CLIFFS AHEAD OF YOU. IT HAS',
+      'YOUR OUTLINE, YOUR CAP, AND TWO RED EYES.',
+      'WHEN YOU COME CLOSE IT FADES AWAY, LEAVING ONLY A',
+      'WHISPER ON THE WIND.',
+      '',
+      "ASH'S DIARY SPEAKS OF A SHADOW THAT FOLLOWED THE",
+      "CLIMB AND WORE ASH'S FACE. NOW IT WEARS YOURS.",
+    ] },
+    { title: 'YOU', text: [
+      "YOU FOUND ASH'S CAP AT THE FOOT OF THE CLIFFS, AND",
+      'IT FIT AS IF IT HAD BEEN MADE FOR YOU.',
+      '',
+      'YOUR OBJECTIVE: CLIMB MOUNT PRECIPICE AND REACH',
+      'THE EVERFLAME. GATHER ITS EMBERS ALONG THE WAY,',
+      "FIND ASH'S MEMORY FRAGMENTS, AND LEARN WHAT THE",
+      'WATCHER WANTS BEFORE YOU REACH THE TOP.',
+    ] },
+  ];
+
+  // A flip-through book of pages (used by GUIDE and LORE).
+  function makeBook(pages) {
+    return {
+      enter() { this.page = 0; },
+      update() {
+        titleUpdate();
+        const n = pages.length;
+        const next = hit('KeyD', 'ArrowRight');
+        if (next || hit(...K.ok) || Input.mouse.click) {
+          if (this.page === n - 1 && !next) { Sound.sfx('select'); setScene(Title); return; }
+          if (this.page < n - 1) { this.page++; Sound.sfx('move'); }
+        }
+        if (hit('KeyA', 'ArrowLeft') && this.page > 0) { this.page--; Sound.sfx('move'); }
+        if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); }
+      },
+      draw() {
+        drawTitleBackdrop();
+        const page = pages[this.page];
+        panel(W / 2 - 190, 20, 380, 232);
+        drawTextOutlined(ctx, page.title, W / 2, 32, PAL.C, 2, 'center');
+        if (page.text) {
+          page.text.forEach((l, i) => drawText(ctx, l, W / 2 - 170, 62 + i * 13, PAL.w));
+        } else {
+          let y = 62;
+          const gap = page.items.length > 3 ? 27 : 44;
+          for (const [icon, head, ...lines] of page.items) {
+            ICONS[icon](W / 2 - 156, y + 6 + (lines.length > 2 ? 8 : 0));
+            drawText(ctx, head, W / 2 - 132, y, PAL.c);
+            lines.forEach((l, i) => drawText(ctx, l, W / 2 - 132, y + 11 + i * 10, PAL.w));
+            y += gap + Math.max(0, lines.length - 2) * 10;
+          }
+        }
+        const n = pages.length;
+        drawText(ctx, (this.page > 0 ? '< ' : '  ') + (this.page + 1) + '/' + n + (this.page < n - 1 ? ' >' : '  '), W / 2, 236, PAL.C, 1, 'center');
+        drawText(ctx, 'A/D: PAGE', W / 2 - 176, 236, PAL.n);
+        drawText(ctx, 'ESC: BACK', W / 2 + 176, 236, PAL.n, 1, 'right');
+      },
+    };
+  }
+  const Guide = makeBook(GUIDE);
+  const Lore = makeBook(LORE);
+
+  // Settings: resolution, fullscreen, graphics preset and volume (saved).
+  function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function toggleFullscreen() {
+    try {
+      if (isFullscreen()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else {
+        const el = document.documentElement;
+        const req = el.requestFullscreen || el.webkitRequestFullscreen;
+        const r = req && req.call(el);
+        if (r && r.catch) r.catch(() => {});
+      }
+    } catch (e) { /* not allowed here */ }
+  }
+  function applyVolumes() {
+    Sound.musicVolume = 0.55 * (Config.music / 10);
+    if (Sound.music && !Sound.music.paused) Sound.music.volume = Sound.musicVolume;
+  }
+
   const Settings = {
-    menu: makeMenu([{ id: 'back', label: 'BACK' }], 170),
+    rows: ['res', 'full', 'gfx', 'music', 'sfx', 'back'],
+    enter() { this.index = 0; },
+    change(row, dir) {
+      if (row === 'res') Config.res = (Config.res + dir + RESOLUTIONS.length) % RESOLUTIONS.length;
+      else if (row === 'gfx') Config.gfx = clamp(Config.gfx + dir, 0, GFX_LEVELS.length - 1);
+      else if (row === 'music') { Config.music = clamp(Config.music + dir, 0, 10); applyVolumes(); }
+      else if (row === 'sfx') Config.sfx = clamp(Config.sfx + dir, 0, 10);
+      else if (row === 'full') toggleFullscreen();
+      else return;
+      Config.save();
+      Sound.sfx('move');
+    },
+    rowY(i) { return 64 + i * 26; },
     update() {
       titleUpdate();
-      const c = this.menu.update();
-      if (c || hit(...K.back)) {
-        if (!c) Sound.sfx('select');
-        setScene(Title);
+      const n = this.rows.length;
+      if (hit(...K.up)) { this.index = (this.index + n - 1) % n; Sound.sfx('move'); }
+      if (hit(...K.down)) { this.index = (this.index + 1) % n; Sound.sfx('move'); }
+      const row = this.rows[this.index];
+      if (hit('KeyA', 'ArrowLeft')) this.change(row, -1);
+      if (hit('KeyD', 'ArrowRight')) this.change(row, 1);
+      const m = Input.mouse;
+      if (m.moved || m.click) {
+        for (let i = 0; i < n; i++) {
+          if (m.x < W / 2 - 170 || m.x > W / 2 + 170 || m.y < this.rowY(i) - 6 || m.y > this.rowY(i) + 16) continue;
+          if (m.moved && this.index !== i) { this.index = i; Sound.sfx('move'); }
+          if (m.click) { this.index = i; if (this.rows[i] === 'back') { Sound.sfx('select'); setScene(Title); return; } this.change(this.rows[i], m.x < W / 2 + 40 ? -1 : 1); }
+        }
       }
+      if (hit(...K.ok)) {
+        if (row === 'back') { Sound.sfx('select'); setScene(Title); return; }
+        this.change(row, 1);
+      }
+      if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); }
     },
     draw() {
       drawTitleBackdrop();
-      panel(W / 2 - 80, 70, 160, 124);
-      drawTextOutlined(ctx, 'SETTINGS', W / 2, 84, PAL.C, 2, 'center');
-      drawText(ctx, 'COMING SOON!', W / 2, 120, PAL.w, 1, 'center');
-      drawText(ctx, 'VOLUME, CONTROLS AND', W / 2, 136, PAL.m, 1, 'center');
-      drawText(ctx, 'MORE WILL LIVE HERE.', W / 2, 146, PAL.m, 1, 'center');
-      this.menu.draw();
+      panel(W / 2 - 190, 20, 380, 232);
+      drawTextOutlined(ctx, 'SETTINGS', W / 2, 32, PAL.C, 2, 'center');
+      const values = {
+        res: RESOLUTIONS[Config.res].name,
+        full: isFullscreen() ? 'ON' : 'OFF',
+        gfx: Config.g.name,
+        music: Config.music,
+        sfx: Config.sfx,
+      };
+      const labels = { res: 'RESOLUTION', full: 'FULLSCREEN', gfx: 'GRAPHICS', music: 'MUSIC', sfx: 'SOUND FX', back: 'BACK' };
+      this.rows.forEach((row, i) => {
+        const y = this.rowY(i);
+        const sel = i === this.index;
+        if (sel) {
+          ctx.fillStyle = 'rgba(60,188,252,0.12)';
+          ctx.fillRect(W / 2 - 176, y - 5, 352, row === 'gfx' ? 28 : 17);
+        }
+        if (row === 'back') {
+          drawText(ctx, (sel ? '> ' : '') + 'BACK' + (sel ? ' <' : ''), W / 2, y, sel ? PAL.c : '#b8c4f0', 1, 'center');
+          return;
+        }
+        drawText(ctx, labels[row], W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
+        const v = values[row];
+        if (row === 'music' || row === 'sfx') {
+          // volume bar: 10 blocks
+          for (let k = 0; k < 10; k++) {
+            ctx.fillStyle = k < v ? PAL.c : '#342468';
+            ctx.fillRect(W / 2 + 41 + k * 8, y, 6, 7);
+          }
+          if (sel) { drawText(ctx, '<', W / 2 + 29, y, PAL.w); drawText(ctx, '>', W / 2 + 126, y, PAL.w); }
+        } else {
+          drawText(ctx, (sel ? '< ' : '  ') + v + (sel ? ' >' : '  '), W / 2 + 80, y, PAL.w, 1, 'center');
+        }
+        if (row === 'gfx') drawText(ctx, '"' + Config.g.desc + '"', W / 2 + 80, y + 12, PAL.m, 1, 'center');
+      });
+      drawText(ctx, 'W/S: SELECT   A/D: CHANGE', W / 2, 236, PAL.n, 1, 'center');
     },
   };
 
@@ -410,7 +660,7 @@
         ['MUSIC', 'SILVER HAND MAN - VIRAXOR', 'DREAM GIRL - SHARK-POOL'],
         ['SOUND EFFECTS', '8-BIT SYNTH (WEB AUDIO)'],
         ['ART', 'PLACEHOLDER PIXEL ART'],
-        ['SOURCE', 'GITHUB.COM/COLDZEEYT/GAME'],
+        ['SOURCE', 'GITHUB.COM/COLDZEEYT/PRECIPICE'],
       ];
       for (const [head, ...lines] of rows) {
         drawText(ctx, head, W / 2, y, PAL.c, 1, 'center');
@@ -424,7 +674,7 @@
   // ---------------------------------------------------------------- physics tuning
   const P = {
     maxRun: 1.8, accelGround: 0.3, accelAir: 0.2, frictionGround: 0.35, frictionAir: 0.1,
-    gravity: 0.36, apexGravity: 0.18, jump: -6.4, jumpCut: -2.4, maxFall: 5.5,
+    gravity: 0.36, apexGravity: 0.18, jump: -5.6, jumpCut: -2.2, maxFall: 5.5,
     coyote: 6, buffer: 6,
     wallSlide: 1.3, wallJumpX: 2.4, wallLock: 10,
     dashSpeed: 4.6, dashTime: 11, spring: -10,
@@ -440,7 +690,7 @@
 
   // ---------------------------------------------------------------- play scene
   const Play = {
-    enter(def) {
+    enter(def, save) {
       this.def = def;
       this.level = buildLevel(def);
       this.crumbles = new Map();
@@ -463,10 +713,38 @@
       for (const o of [...L0.signs, ...L0.checkpoints, ...L0.springs, ...L0.fragments, ...L0.watchers]) this.decoBlock.add(o.x);
       if (L0.flag) [-1, 0, 1].forEach((d) => this.decoBlock.add(L0.flag.x + d));
       // Drifting dust / snow in front of the background.
-      this.motes = Array.from({ length: 36 }, () => ({
+      this.motes = Array.from({ length: 70 }, () => ({
         x: Math.random() * W, y: Math.random() * H, v: 0.15 + Math.random() * 0.3, p: Math.random() * 6.28,
       }));
       this.pauseMenu = makeMenu([{ id: 'resume', label: 'RESUME' }, { id: 'quit', label: 'QUIT TO TITLE' }], 140);
+      this.toast = 0;
+      if (save) this.loadSave(save);
+    },
+
+    // Continue from a saved checkpoint, keeping collectables and stats.
+    loadSave(save) {
+      const L = this.level;
+      const cp = L.checkpoints[save.cp];
+      if (cp) {
+        cp.active = true;
+        this.spawn = { x: cp.x * T + 3, y: cp.y * T + 1 };
+        this.player = newPlayer(this.spawn);
+        this.cam = clamp(this.spawn.x - W / 2, 0, L.w * T - W);
+      }
+      (save.embers || []).forEach((got, i) => { if (L.embers[i]) L.embers[i].got = got; });
+      (save.fragments || []).forEach((got, i) => { if (L.fragments[i]) L.fragments[i].got = got; });
+      this.deaths = save.deaths || 0;
+      this.time = save.time || 0;
+    },
+
+    saveProgress(cpIndex) {
+      const L = this.level;
+      if (L.id === 'tutorial') return; // only the real climb is saved
+      const ok = SaveGame.write({
+        level: L.id, cp: cpIndex, deaths: this.deaths, time: this.time,
+        embers: L.embers.map((e) => e.got), fragments: L.fragments.map((f) => f.got),
+      });
+      if (ok) this.toast = 120;
     },
 
     // --- tile queries
@@ -530,6 +808,7 @@
     },
 
     burst(x, y, colors, n = 12, speed = 2) {
+      if (!Config.g.particles) return;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2 + Math.random() * 0.3;
         const s = speed * (0.5 + Math.random() * 0.7);
@@ -618,6 +897,7 @@
       }
       for (let i = this.trail.length - 1; i >= 0; i--) if (--this.trail[i].life <= 0) this.trail.splice(i, 1);
       if (this.shake > 0) this.shake--;
+      if (this.toast > 0) this.toast--;
       for (const m of this.motes) {
         m.y += m.v;
         m.x += Math.sin(frame / 50 + m.p) * 0.2;
@@ -808,12 +1088,15 @@
           this.spawn = { x: cp.x * T + 3, y: cp.y * T + 1 };
           this.burst(cp.x * T + 12, cp.y * T - 2, [PAL.G, PAL.w], 10, 1.2);
           Sound.sfx('check');
+          this.saveProgress(L.checkpoints.indexOf(cp));
         }
       }
       const f = L.flag;
       if (f && overlap(p, { x: f.x * T + 4, y: (f.y - 3) * T, w: 8, h: 4 * T })) {
         this.state = 'clear';
         this.clearT = 0;
+        const saved = SaveGame.load();
+        if (saved && saved.level === L.id) SaveGame.clear(); // stage finished
         p.vx = 0;
         this.burst(f.x * T + 8, (f.y - 3) * T, [PAL.y, PAL.w, PAL.G, PAL.c], 24, 2.5);
         Sound.sfx('clear');
@@ -834,7 +1117,7 @@
       const cx = Math.round(this.cam);
       drawBackground(ctx, cx, frame);
       ctx.fillStyle = '#4c3c8c';
-      for (const m of this.motes) {
+      for (const m of this.motes.slice(0, Config.g.dust)) {
         const mx = (((m.x - cx * 0.6) % W) + W) % W;
         ctx.fillRect(Math.round(mx), Math.round(m.y), 1, 1);
       }
@@ -869,7 +1152,7 @@
       }
 
       // decorations on grass tops and roots under overhangs
-      for (let ty = 0; ty < L.h; ty++) {
+      if (Config.g.deco) for (let ty = 0; ty < L.h; ty++) {
         for (let tx = tx0; tx <= tx0 + Math.ceil(W / T) + 1; tx++) {
           if (this.tileAt(tx, ty) !== '#') continue;
           if (ty > 0 && this.tileAt(tx, ty - 1) === '.') this.drawDeco(tx, ty);
@@ -924,6 +1207,10 @@
       ctx.restore();
 
       this.drawHud();
+      if (this.toast > 0 && (this.toast > 30 || this.toast % 8 < 4)) {
+        ctx.drawImage(CHECKPOINT_SPR.on, W - 104, H - 28);
+        drawTextOutlined(ctx, 'PROGRESS SAVED', W - 6, H - 16, PAL.G, 1, 'right');
+      }
       this.drawSignText();
       this.drawMessage();
 
@@ -1106,7 +1393,21 @@
 
   function formatTime(frames) {
     const s = Math.floor(frames / 60);
-    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    return Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60);
+  }
+
+  // Loading circle: only shown while something is genuinely still loading
+  // (the title music) and it has been taking longer than ~0.3s.
+  let loadingFrames = 0;
+  function drawLoadingCircle() {
+    const cx = W - 14, cy = H - 14;
+    const head = Math.floor(frame / 4) % 8;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
+      const behind = (head - i + 8) % 8;
+      ctx.fillStyle = behind === 0 ? PAL.w : behind < 3 ? PAL.C : '#342468';
+      ctx.fillRect(Math.round(cx + Math.cos(a) * 6) - 1, Math.round(cy + Math.sin(a) * 6) - 1, 2, 2);
+    }
   }
 
   // ---------------------------------------------------------------- main loop
@@ -1119,6 +1420,7 @@
     while (acc >= STEP) {
       scene.update();
       frame++;
+      loadingFrames = scene !== Play && Sound.isLoading() ? loadingFrames + 1 : 0;
       if (fade > 0) fade--;
       Input.pressed.clear();
       Input.mouse.click = false;
@@ -1126,17 +1428,30 @@
       Input.any = false;
       acc -= STEP;
     }
+    // Re-fit whenever the window size changes (covers wrappers that never fire 'resize').
+    const size = innerWidth + 'x' + innerHeight + ':' + Config.res;
+    if (size !== lastSize) { lastSize = size; resize(); }
     scene.draw();
     if (fade > 0) {
       ctx.fillStyle = 'rgba(0,0,0,' + fade / FADE + ')';
       ctx.fillRect(0, 0, W, H);
     }
+    if (Config.g.scanlines) {
+      // NASA-grade retro CRT scanlines
+      ctx.fillStyle = 'rgba(0,0,0,0.13)';
+      for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1);
+    }
+    if (loadingFrames > 18) drawLoadingCircle();
+    if (boot) { boot.remove(); boot = null; }
     requestAnimationFrame(loop);
   }
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { Splash, Title, Settings, Play }, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { Splash, Title, Settings, Guide, Lore, Credits, Play }, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
+  let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
+  applyVolumes();
+  Sound.preload();
   setScene(Splash);
   requestAnimationFrame(loop);
 })();

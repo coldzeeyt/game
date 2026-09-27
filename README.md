@@ -21,6 +21,17 @@ python3 -m http.server 8000
 # then visit http://localhost:8000
 ```
 
+### Desktop app (Electron)
+
+`main.js` + `package.json` make this folder an Electron app:
+
+```sh
+npx electron .                      # run it
+npx @electron/packager . Precipice --platform=win32 --arch=x64 --icon=icon.ico   # build Precipice.exe
+```
+
+F11 toggles fullscreen in the desktop app.
+
 The game renders at 480×270 and scales up in whole steps to fill the window (4× = 1920×1080).
 
 ## Controls
@@ -50,20 +61,35 @@ Violet rune stones hold **memory fragments**, pages from Ash's diary.
 Something that wears your face appears ahead of you on the cliffs and vanishes when you
 approach. Collect every fragment in a stage to see what it has to say.
 
+## Saving
+
+Touching a checkpoint saves your game (checkpoint, embers, memory fragments, deaths and time).
+**Continue** on the title screen resumes from there, even after closing the game.
+
 ## Title screen
 
-New Game (opens with the backstory; Esc skips it) · Tutorial · Settings (placeholder) · Credits
+- **Continue**: resume from your last checkpoint (shown once you have a save)
+- **New Game**: opens with the backstory (Esc skips it)
+- **Tutorial**: teaches every mechanic
+- **Guide**: your goal, the collectables, everything on the mountain, and the controls
+- **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you
+- **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
+  *Potato* → *Toaster* → *Grandma's Laptop* → *Gamer Rig* → *NASA PC*
+- **Credits**
 
 ## Credits
 
 - Game & design: ColdzeeYT
 - Music: "Silver Hand Man" by viraxor, "Dream Girl" by shark-pool
-- Source: https://github.com/coldzeeyt/game
+- Source: https://github.com/coldzeeyt/precipice
 
 ## Project layout
 
 ```
 index.html          page + canvas
+main.js             Electron entry point (desktop app)
+icon.png / .ico     app icon (a memory fragment)
+js/config.js        settings: resolution, graphics presets, volume
 js/font.js          5x7 and 3x5 bitmap pixel fonts
 js/gfx.js           sprites, tiles, decorations, background (all drawn in code)
 js/audio.js         title music playlist + synthesized 8-bit sound effects

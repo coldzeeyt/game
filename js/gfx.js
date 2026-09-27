@@ -88,14 +88,13 @@ const FRAGMENT_SPR = spriteFromRows([
   '...nnnnnn...',
   '..nmmmmmmn..',
   '.nmlllllmmn.',
-  '.nmlvvvlmmn.',
+  '.nmllVllmmn.',
+  '.nmlvVvlmmn.',
+  '.nmlllllmmn.',
   '.nmllvllmmn.',
   '.nmlvlvlmmn.',
-  '.nmlllllmmn.',
-  '.nmlVvVlmmn.',
-  '.nmllvllmmn.',
-  '.nmlvllvmmn.',
-  '.nmlllllmmn.',
+  '.nmvlllvmmn.',
+  '.nmvvvvvmmn.',
   '.nmmmmmmmmn.',
   'nnnnnnnnnnnn',
   'nmmmmmmmmmmn',
@@ -289,7 +288,7 @@ const BG = (() => {
   };
   // twinkling stars (drawn live)
   const tw = [];
-  for (let i = 0; i < 14; i++) tw.push({ x: (r() * SCREEN_W) | 0, y: (r() * 130) | 0, p: (r() * 120) | 0 });
+  for (let i = 0; i < 40; i++) tw.push({ x: (r() * SCREEN_W) | 0, y: (r() * 130) | 0, p: (r() * 120) | 0 });
   return {
     sky,
     twinkle: tw,
@@ -300,8 +299,9 @@ const BG = (() => {
 })();
 
 function drawBackground(ctx, camX, t = 0) {
+  const g = Config.g;
   ctx.drawImage(BG.sky, 0, 0);
-  for (const s of BG.twinkle) {
+  for (const s of BG.twinkle.slice(0, g.stars)) {
     const k = (t + s.p) % 120;
     if (k < 40) {
       ctx.fillStyle = k < 20 ? PAL.w : PAL.C;
@@ -309,12 +309,12 @@ function drawBackground(ctx, camX, t = 0) {
       if (k > 8 && k < 14) { ctx.fillRect(s.x - 1, s.y, 3, 1); ctx.fillRect(s.x, s.y - 1, 1, 3); }
     }
   }
-  const layers = [[BG.far, 0.1], [BG.mid, 0.25], [BG.near, 0.45]];
+  const layers = [[BG.far, 0.1], [BG.mid, 0.25], [BG.near, 0.45]].slice(0, g.layers);
   layers.forEach(([img, p], i) => {
     const off = -Math.floor((camX * p) % 512);
     ctx.drawImage(img, off, 0);
     ctx.drawImage(img, off + 512, 0);
-    if (i === 0) {
+    if (i === 0 && g.mist) {
       // drifting mist between the far and middle ranges
       ctx.fillStyle = 'rgba(160,140,230,0.07)';
       const m = Math.floor(t / 4 + camX * 0.18) % 64;

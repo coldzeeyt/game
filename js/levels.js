@@ -66,7 +66,7 @@ const LEVELS = {
 
       // --- High wall & spikes ---
       b.ground(24, 49);
-      b.ground(29, 31, 10);
+      b.ground(29, 31, 11);
       b.spikes(34, 12, 2);
       b.sign(32, 12, 'SPIKES ARE DEADLY');
       b.sign(37, 12, 'CHECKPOINTS SAVE\nYOUR PROGRESS');
@@ -124,8 +124,8 @@ const LEVELS = {
       b.start(2, 12);
       b.ground(0, 12);
       b.sign(5, 12, "DON'T LOOK DOWN.");
-      b.ground(16, 22, 11);
-      b.fragment(20, 10, 'DAY 1. THE SUMMIT CALLS.\nI MUST SEE WHAT IS ABOVE.');
+      b.ground(16, 22, 12);
+      b.fragment(20, 11, 'DAY 1. THE SUMMIT CALLS.\nI MUST SEE WHAT IS ABOVE.');
       b.ground(23, 30);
       b.spikes(25, 12, 3);
       b.ember(26, 8);
