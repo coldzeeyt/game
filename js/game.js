@@ -843,7 +843,7 @@
       ctx.translate(-cx + sx, sy);
 
       // tiles
-      const isGround = (x, y) => y >= L.h || this.tileAt(x, y) === '#';
+      const isGround = (x, y) => y < 0 || y >= L.h || this.tileAt(x, y) === '#';
       const tx0 = Math.floor(cx / T) - 1;
       for (let ty = 0; ty < L.h; ty++) {
         for (let tx = tx0; tx <= tx0 + Math.ceil(W / T) + 1; tx++) {
