@@ -833,7 +833,6 @@
         } else {
           drawText(ctx, (sel ? '< ' : '  ') + v + (sel ? ' >' : '  '), W / 2 + 80, y, PAL.w, 1, 'center');
         }
-        if (row === 'gfx') drawText(ctx, '"' + Config.g.desc + '"', W / 2 + 80, y + 12, PAL.m, 1, 'center');
       });
       drawText(ctx, 'W/S: SELECT   A/D: CHANGE', W / 2, 236, PAL.n, 1, 'center');
     },
@@ -2854,7 +2853,7 @@
       ctx.fillRect(0, 0, W, H);
     }
     if (Config.g.scanlines) {
-      // NASA-grade retro CRT scanlines
+      // retro CRT scanlines (full detail only)
       ctx.fillStyle = 'rgba(0,0,0,0.13)';
       for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1);
     }

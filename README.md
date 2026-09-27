@@ -146,7 +146,7 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Guide**: your goal, the collectables, everything on the mountain, and the controls
 - **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
-  *Potato* → *Toaster* → *Grandma's Laptop* → *Gamer Rig* → *NASA PC*
+  *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*
 - **Multiplayer**: make a room and race your friends with its 4-letter code
 - **Credits**
 - **Account** (bottom left): sign up / log in / log out, and save or load your saves in the cloud

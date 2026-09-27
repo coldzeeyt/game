@@ -1,12 +1,12 @@
 // Player settings (saved in the browser / desktop app).
 
-// Graphics presets, from potato to NASA. Each one really changes what gets drawn.
+// Graphics presets, from bare bones to full detail. Each one really changes what gets drawn.
 const GFX_LEVELS = [
-  { name: 'POTATO', desc: 'RUNS ON A LITERAL POTATO', layers: 0, stars: 0, mist: false, deco: false, rain: 0, dust: 0, particles: false, scanlines: false },
-  { name: 'TOASTER', desc: 'IT CAN ALSO MAKE BREAD', layers: 1, stars: 0, mist: false, deco: false, rain: 40, dust: 0, particles: true, scanlines: false },
-  { name: "GRANDMA'S LAPTOP", desc: 'STILL HAS INTERNET EXPLORER', layers: 3, stars: 6, mist: false, deco: true, rain: 80, dust: 16, particles: true, scanlines: false },
-  { name: 'GAMER RIG', desc: 'THE RGB MAKES IT FASTER', layers: 3, stars: 14, mist: true, deco: true, rain: 140, dust: 36, particles: true, scanlines: false },
-  { name: 'NASA PC', desc: 'CAN RENDER THE ENTIRE UNIVERSE', layers: 3, stars: 40, mist: true, deco: true, rain: 240, dust: 70, particles: true, scanlines: true },
+  { name: 'BARE BONES', layers: 0, stars: 0, mist: false, deco: false, rain: 0, dust: 0, particles: false, scanlines: false },
+  { name: 'SIMPLE', layers: 1, stars: 0, mist: false, deco: false, rain: 40, dust: 0, particles: true, scanlines: false },
+  { name: 'STANDARD', layers: 3, stars: 6, mist: false, deco: true, rain: 80, dust: 16, particles: true, scanlines: false },
+  { name: 'DETAILED', layers: 3, stars: 14, mist: true, deco: true, rain: 140, dust: 36, particles: true, scanlines: false },
+  { name: 'FULL DETAIL', layers: 3, stars: 40, mist: true, deco: true, rain: 240, dust: 70, particles: true, scanlines: true },
 ];
 
 // Display sizes (16:9). "Auto" fills the window in whole-pixel steps.
