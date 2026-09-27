@@ -72,7 +72,12 @@
   <script>
     // Installable / offline web app (skipped in the desktop and Android apps).
     if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.Capacitor) {
-      navigator.serviceWorker.register('sw.js').catch(function () {});
+      // When a new version takes over, reload once so the whole game is the new version.
+      var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (hadController && !reloaded) { reloaded = true; location.reload(); }
+      });
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { r.update(); }).catch(function () {});
     }
   </script>
 </body>
