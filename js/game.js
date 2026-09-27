@@ -9,18 +9,38 @@
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
 
+  // The real visible area. iPad Safari can report stale window sizes right
+  // after a rotation, so prefer the visual viewport when there is one.
+  function viewSize() {
+    const v = window.visualViewport;
+    const w = v ? Math.min(innerWidth, Math.round(v.width * v.scale)) : innerWidth;
+    const h = v ? Math.min(innerHeight, Math.round(v.height * v.scale)) : innerHeight;
+    return [w || innerWidth, h || innerHeight];
+  }
+
   function resize() {
     // Largest whole-number scale that fits (4x = 1920x1080); fall back to a
     // fractional scale on very small windows.
-    const fit = Math.min(innerWidth / W, innerHeight / H);
+    const [vw, vh] = viewSize();
+    const fit = Math.min(vw / W, vh / H);
     if (!(fit > 0)) return; // window not laid out yet (can happen in desktop wrappers)
-    let s = fit >= 1 ? Math.floor(fit) : fit;
+    // phones and tablets fill the screen; computers keep crisp whole-number steps
+    const touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    let s = fit >= 1 && !touch ? Math.floor(fit) : fit;
     const res = RESOLUTIONS[Config.res];
     if (res.w) s = Math.min(res.w / W, fit); // chosen size, shrunk to fit the window
     canvas.style.width = W * s + 'px';
     canvas.style.height = H * s + 'px';
   }
   addEventListener('resize', resize);
+  if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+  // After a rotation, undo any page zoom/scroll Safari applied and re-fit a few times
+  // (the new size can take a moment to settle).
+  addEventListener('orientationchange', () => {
+    const meta = document.querySelector('meta[name=viewport]');
+    if (meta) { const c = meta.content; meta.content = c + ', minimum-scale=1'; setTimeout(() => { meta.content = c; }, 50); }
+    for (const t of [0, 100, 300, 700]) setTimeout(() => { scrollTo(0, 0); resize(); }, t);
+  });
   resize();
   let lastSize = '';
 
@@ -575,6 +595,7 @@
     blocks: (x, y) => { Play.drawSwitchBlock(x - 16, y - 8, 'B', true); Play.drawSwitchBlock(x, y - 8, 'B', false); },
     vent: (x, y) => { Play.drawVent({ x: (x - 8) / T, y: (y + 8) / T, phase: 60 }); },
     ladder: (x, y) => ctx.drawImage(TILES.ladder, x - 8, y - 8),
+    thru: (x, y) => { Play.drawThru(x - 16, y - 3, true, false); Play.drawThru(x, y - 3, false, true); },
     wind: (x, y) => {
       ctx.fillStyle = '#dce6fc';
       [[-9, -4, 14], [-6, 0, 16], [-10, 4, 12]].forEach(([dx, dy, w]) => ctx.fillRect(x + dx, y + dy, w, 1));
@@ -605,6 +626,7 @@
       ['spring', 'SPRINGS', 'LAUNCH YOU SKY HIGH AND REFILL YOUR DASH.'],
       ['mover', 'MOVING PLATFORMS', 'RIDE THEM ACROSS WIDE GAPS.'],
       ['ladder', 'LADDERS', 'HOLD UP OR DOWN TO CLIMB. JUMP TO HOP OFF.'],
+      ['thru', 'WOODEN PLATFORMS', 'JUMP UP THROUGH THEM AND LAND ON TOP.', 'PRESS DOWN TO DROP BACK THROUGH.'],
     ] },
     { title: 'PUZZLES', items: [
       ['key', 'KEYS', 'OFTEN TUCKED AWAY UP A LADDER OR ON A LEDGE.', 'LOOK AROUND BEFORE YOU RUSH AHEAD.'],
@@ -689,7 +711,7 @@
   ];
 
   // A flip-through book of pages (used by GUIDE and LORE).
-  function makeBook(pages) {
+  function makeBook(pages, back = () => Title) {
     return {
       enter() { this.page = 0; },
       update() {
@@ -697,11 +719,11 @@
         const n = pages.length;
         const next = hit(...K.right);
         if (next || hit(...K.ok) || Input.mouse.click) {
-          if (this.page === n - 1 && !next) { Sound.sfx('select'); setScene(Title); return; }
+          if (this.page === n - 1 && !next) { Sound.sfx('select'); setScene(back()); return; }
           if (this.page < n - 1) { this.page++; Sound.sfx('move'); }
         }
         if (hit(...K.left) && this.page > 0) { this.page--; Sound.sfx('move'); }
-        if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); }
+        if (hit(...K.back)) { Sound.sfx('select'); setScene(back()); }
       },
       draw() {
         drawTitleBackdrop();
@@ -731,6 +753,65 @@
   const Guide = makeBook(GUIDE);
   const Lore = makeBook(LORE);
 
+  // What's new, newest first (Settings > Changelog).
+  const CHANGELOG = [
+    { title: 'UPDATE 1.6', text: [
+      'PLATFORMS & ACCOUNTS', '',
+      '- ACCOUNTS: SIGN UP, LOG IN, AND SAVE OR LOAD',
+      '  YOUR GAME ON ANY DEVICE (BOTTOM LEFT)',
+      '- NEW: WOODEN PLATFORMS YOU CAN JUMP UP THROUGH',
+      '- MULTIPLAYER MOVED INTO MORE (BOTTOM RIGHT)',
+      '- GRAPHICS: BARE BONES UP TO FULL DETAIL',
+      '- NICER LOCKED GATES AND PADLOCKS',
+      '- TOUCH BUTTONS MOVED TO THE SIDES',
+      '- PHONES AND TABLETS: THE GAME FILLS THE SCREEN,',
+      '  AND YOU CAN TYPE ROOM CODES AND NAMES',
+      '- THE WEB VERSION UPDATES STRAIGHT AWAY',
+      '- THIS CHANGELOG!',
+    ] },
+    { title: 'UPDATE 1.5', text: [
+      'TALLER CLIMBS', '',
+      '- LADDERS AND SLIPPERY ICE',
+      '- ARROW KEYS, AND A CONTROLS TAB TO CHANGE KEYS',
+      '- ONLINE MULTIPLAYER: RACE FRIENDS IN ROOMS',
+      '- NEW HAZARDS: SAW BLADES AND FIRE VENTS',
+      '- PUZZLES: KEYS, LOCKED GATES AND SWITCH ORBS',
+      '- LONGER, TALLER STAGES WITH CLIMBING TOWERS',
+      '- ANIMATED TEXT BOXES',
+      '- 8-BIT TOUCH BUTTONS',
+      '- PLAYTESTERS IN THE CREDITS',
+    ] },
+    { title: 'UPDATE 1.4', text: [
+      'THE LONG CLIMB', '',
+      '- 10 CHAPTERS AND 100 STAGES (ABOUT 5 HOURS)',
+      '- 3 SAVE SLOTS WITH CONTINUE AND LOAD GAME',
+      '- BOSS FIGHT: THE WATCHER',
+      '- ACT II: 50 MORE STAGES, THE HOLLOW,',
+      '  AND THE TRUE ENDING',
+      '- HARDCORE MODE: NO CHECKPOINTS',
+      '- EASIER FIRST CHAPTER',
+    ] },
+    { title: 'UPDATE 1.3', text: [
+      'THE MOUNTAIN OPENS UP', '',
+      '- CHECKPOINTS',
+      '- GUIDE AND LORE BOOKS',
+      '- RESOLUTIONS AND GRAPHICS PRESETS',
+      '- PLAY ON PHONES, ANDROID APP AND WINDOWS EXE',
+      '- A NEW ICON: THE MEMORY FRAGMENT',
+      '- LOADING SPINNER',
+    ] },
+    { title: 'UPDATE 1.0', text: [
+      'FIRST STEPS', '',
+      '- PRECIPICE IS BORN: RUN, JUMP, DASH AND CLIMB',
+      '- THE TUTORIAL',
+      "- MEMORY FRAGMENTS AND THE WATCHER'S MYSTERY",
+      '- ASH, THE EVERFLAME AND THE BACKSTORY',
+      '- A STORMY TITLE SCREEN WITH RAIN AND LIGHTNING',
+      '- MUSIC: SILVER HAND MAN BY VIRAXOR',
+    ] },
+  ];
+  const Changelog = makeBook(CHANGELOG, () => Settings);
+
   // Settings: resolution, fullscreen, graphics preset and volume (saved).
   function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
   function toggleFullscreen() {
@@ -750,7 +831,7 @@
   }
 
   const Settings = {
-    rows: ['res', 'full', 'gfx', 'music', 'sfx', 'controls', 'back'],
+    rows: ['res', 'full', 'gfx', 'music', 'sfx', 'controls', 'changelog', 'back'],
     enter() { this.index = 0; },
     change(row, dir) {
       if (row === 'res') Config.res = (Config.res + dir + RESOLUTIONS.length) % RESOLUTIONS.length;
@@ -762,7 +843,7 @@
       Config.save();
       Sound.sfx('move');
     },
-    rowY(i) { return 60 + i * 24; },
+    rowY(i) { return 58 + i * 21; },
     update() {
       titleUpdate();
       const n = this.rows.length;
@@ -780,6 +861,7 @@
             this.index = i;
             if (this.rows[i] === 'back') { Sound.sfx('select'); setScene(Title); return; }
             if (this.rows[i] === 'controls') { Sound.sfx('select'); setScene(Controls); return; }
+            if (this.rows[i] === 'changelog') { Sound.sfx('select'); setScene(Changelog); return; }
             this.change(this.rows[i], m.x < W / 2 + 40 ? -1 : 1);
           }
         }
@@ -787,6 +869,7 @@
       if (hit(...K.ok)) {
         if (row === 'back') { Sound.sfx('select'); setScene(Title); return; }
         if (row === 'controls') { Sound.sfx('select'); setScene(Controls); return; }
+        if (row === 'changelog') { Sound.sfx('select'); setScene(Changelog); return; }
         this.change(row, 1);
       }
       if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); }
@@ -808,15 +891,16 @@
         const sel = i === this.index;
         if (sel) {
           ctx.fillStyle = 'rgba(60,188,252,0.12)';
-          ctx.fillRect(W / 2 - 176, y - 5, 352, row === 'gfx' ? 28 : 17);
+          ctx.fillRect(W / 2 - 176, y - 5, 352, 17);
         }
         if (row === 'back') {
           drawText(ctx, (sel ? '> ' : '') + 'BACK' + (sel ? ' <' : ''), W / 2, y, sel ? PAL.c : '#b8c4f0', 1, 'center');
           return;
         }
-        if (row === 'controls') {
-          drawText(ctx, 'CONTROLS', W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
-          drawText(ctx, (sel ? '> ' : '  ') + 'CHANGE KEYS' + (sel ? ' <' : '  '), W / 2 + 80, y, PAL.w, 1, 'center');
+        if (row === 'controls' || row === 'changelog') {
+          drawText(ctx, row === 'controls' ? 'CONTROLS' : 'CHANGELOG', W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
+          const what = row === 'controls' ? 'CHANGE KEYS' : "WHAT'S NEW";
+          drawText(ctx, (sel ? '> ' : '  ') + what + (sel ? ' <' : '  '), W / 2 + 80, y, PAL.w, 1, 'center');
           return;
         }
         drawText(ctx, labels[row], W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
@@ -1134,6 +1218,14 @@
   function loadName() {
     try { return localStorage.getItem('precipice.name'); } catch (e) { return null; }
   }
+  // Phones and tablets have no keyboard for the canvas: ask with the system text box.
+  const IS_TOUCH = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  function touchPrompt(question, current, max) {
+    if (!IS_TOUCH || typeof prompt !== 'function') return null;
+    const v = prompt(question, current || '');
+    Input.down.clear();
+    return v == null ? null : v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, max);
+  }
   function typeInto(text, max) {
     for (const code of Input.pressed) {
       if (/^Key[A-Z]$/.test(code) && text.length < max) text += code.slice(3);
@@ -1163,9 +1255,9 @@
     },
     // Phones have no keyboard for the canvas, so ask with the system text box.
     promptFor(field) {
-      if (!('ontouchstart' in window || navigator.maxTouchPoints > 0) || typeof prompt !== 'function') return false;
-      const v = prompt(field === 'user' ? 'ACCOUNT NAME (3-12 LETTERS OR NUMBERS)' : 'PASSWORD (4-32 LETTERS OR NUMBERS)', field === 'user' ? this.user : '');
-      if (v != null) this[field] = v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, field === 'user' ? 12 : 32);
+      if (!IS_TOUCH) return false;
+      const v = touchPrompt(field === 'user' ? 'ACCOUNT NAME (3-12 LETTERS OR NUMBERS)' : 'PASSWORD (4-32 LETTERS OR NUMBERS)', field === 'user' ? this.user : '', field === 'user' ? 12 : 32);
+      if (v != null) this[field] = v;
       return true;
     },
     choose(row) {
@@ -1299,7 +1391,11 @@
       if (!chosen) return;
       Sound.sfx('select');
       const row = this.rows[this.index];
-      if (row === 'name') this.editing = true;
+      if (row === 'name') {
+        const v = touchPrompt('YOUR NAME (UP TO 10 LETTERS OR NUMBERS)', this.name, 10);
+        if (v != null) { this.name = v || 'CLIMBER'; try { localStorage.setItem('precipice.name', this.name); } catch (e) { /* ignore */ } }
+        else if (!IS_TOUCH) this.editing = true;
+      }
       else if (row === 'create') { Net.host(this.name); setScene(Room); }
       else if (row === 'join') setScene(JoinCode);
       else setScene(More);
@@ -1341,7 +1437,18 @@
       if (hit('ArrowLeft', 'Backspace')) this.cursor = Math.max(0, this.cursor - 1);
       if (hit('ArrowRight')) this.cursor = Math.min(3, this.cursor + 1);
       if (hit('Escape')) { Sound.sfx('select'); setScene(Multi); return; }
-      if (hit('Enter', 'NumpadEnter', 'Space') || Input.mouse.click) {
+      const m = Input.mouse;
+      if (m.click && IS_TOUCH && m.y >= 100 && m.y <= 150) {
+        const v = touchPrompt('ROOM CODE (4 LETTERS)', '', 4);
+        if (v) {
+          const letters = v.split('').filter((c) => ROOM_LETTERS.includes(c));
+          for (let i = 0; i < 4; i++) this.code[i] = letters[i] || 'A';
+          this.cursor = 3;
+          Sound.sfx('move');
+        }
+        return;
+      }
+      if (hit('Enter', 'NumpadEnter', 'Space') || m.click) {
         Sound.sfx('select');
         Net.join(this.code.join(''), Multi.name);
         setScene(Room);
@@ -1359,8 +1466,8 @@
         drawText(ctx, this.code[i], x + 14, 115, sel ? PAL.y : PAL.w, 3, 'center');
         if (sel && blink(15)) { ctx.fillStyle = PAL.y; ctx.fillRect(x + 4, 144, 20, 2); }
       }
-      drawText(ctx, 'TYPE IT, OR USE UP/DOWN AND LEFT/RIGHT', W / 2, 160, PAL.m, 1, 'center');
-      drawText(ctx, 'ENTER: JOIN     ESC: BACK', W / 2, 196, PAL.n, 1, 'center');
+      drawText(ctx, IS_TOUCH ? 'TAP THE LETTERS TO TYPE THE CODE' : 'TYPE IT, OR USE UP/DOWN AND LEFT/RIGHT', W / 2, 160, PAL.m, 1, 'center');
+      drawText(ctx, IS_TOUCH ? 'JUMP (OR TAP HERE): JOIN     PAUSE: BACK' : 'ENTER: JOIN     ESC: BACK', W / 2, 196, PAL.n, 1, 'center');
     },
   };
 
@@ -1690,6 +1797,13 @@
       return p.onGround && this.tileAt(Math.floor((p.x + p.w / 2) / T), Math.floor((p.y + p.h + 1) / T)) === 'H';
     },
 
+    onThru(p) {
+      if (!p.onGround) return false;
+      const ty = Math.floor((p.y + p.h + 1) / T);
+      for (let tx = Math.floor(p.x / T); tx <= Math.floor((p.x + p.w - 0.01) / T); tx++) if (this.tileAt(tx, ty) !== '-' && this.solidAt(tx, ty)) return false;
+      return [Math.floor(p.x / T), Math.floor((p.x + p.w - 0.01) / T)].some((tx) => this.tileAt(tx, ty) === '-');
+    },
+
     onIce(p) {
       const ty = Math.floor((p.y + p.h + 0.5) / T);
       return this.tileAt(Math.floor((p.x + p.w / 2) / T), ty) === 'i';
@@ -1728,6 +1842,17 @@
         const r = Math.floor((p.y + p.h) / T);
         for (let tx = Math.floor(p.x / T); tx <= Math.floor((p.x + p.w - 0.01) / T); tx++) {
           if (this.tileAt(tx, r) === 'H' && this.tileAt(tx, r - 1) !== 'H' && prevBottom <= r * T + 0.01 && p.y + p.h >= r * T) {
+            p.y = r * T - p.h;
+            p.vy = 0;
+            p.onGround = true;
+          }
+        }
+      }
+      // wooden platforms: solid only from above (and not while dropping through)
+      if (dy >= 0 && !p.dropT) {
+        const r = Math.floor((p.y + p.h) / T);
+        for (let tx = Math.floor(p.x / T); tx <= Math.floor((p.x + p.w - 0.01) / T); tx++) {
+          if (this.tileAt(tx, r) === '-' && prevBottom <= r * T + 0.01 && p.y + p.h >= r * T) {
             p.y = r * T - p.h;
             p.vy = 0;
             p.onGround = true;
@@ -1895,6 +2020,15 @@
       else if (p.coyote > 0) p.coyote--;
       if (p.lock > 0) p.lock--;
       if (p.onGround && !p.dashing) p.dashes = 1;
+
+      // --- drop down through a wooden platform
+      if (p.dropT > 0) p.dropT--;
+      if (tap('down') && !p.dashing && !p.climbing && !this.onLadderTop(p) && this.onThru(p)) {
+        p.dropT = 10;
+        p.onGround = false;
+        p.coyote = 0;
+        p.y += 1;
+      }
 
       // --- grab a ladder (up while on one, or down while on one / standing on its top)
       if (!p.dashing && !p.climbing && ((act('up') && this.onLadder(p)) || (act('down') && (this.onLadder(p) || this.onLadderTop(p))))) {
@@ -2203,6 +2337,7 @@
           if (t === '#') drawGround(px, py, tx, ty, isGround); else if (t === '=') ctx.drawImage(TILES.brick, px, py);
           else if (t === 'i') ctx.drawImage(TILES.ice, px, py);
           else if (t === 'H') ctx.drawImage(TILES.ladder, px, py);
+          else if (t === '-') this.drawThru(px, py, this.tileAt(tx - 1, ty) !== '-', this.tileAt(tx + 1, ty) !== '-');
           else if (t === 'G') this.drawGateTile(px, py, this.tileAt(tx, ty + 1) !== 'G', this.tileAt(tx, ty - 1) !== 'G');
           else if (t === 'B' || t === 'R') this.drawSwitchBlock(px, py, t, this.solidAt(tx, ty));
           else if (t === '^') ctx.drawImage(TILES.spike, px, py);
@@ -2524,6 +2659,18 @@
         ctx.fillStyle = '#9c9cb8'; for (const bx of [4, 8, 11]) { ctx.fillRect(px + bx, py - 3, 2, 3); ctx.fillRect(px + bx - 1, py - 1, 4, 1); } // spikes
       } else if (Math.round(py / 16) % 3 === 0) band(py + 6);
       if (bottom) { band(py + 13); this.drawPadlock(px + 1, py - 4); }
+    },
+
+    // wooden jump-through platform: a plank with nails, and little brackets at the ends
+    drawThru(px, py, leftEnd, rightEnd) {
+      ctx.fillStyle = '#503000'; ctx.fillRect(px, py, 16, 6);
+      ctx.fillStyle = '#ac7c00'; ctx.fillRect(px, py, 16, 5);
+      ctx.fillStyle = '#e4a444'; ctx.fillRect(px, py, 16, 1);
+      ctx.fillStyle = '#7c5000'; ctx.fillRect(px + 7, py + 1, 1, 4); ctx.fillRect(px + 15, py + 1, 1, 4); // board seams
+      ctx.fillStyle = '#3c2c2c'; ctx.fillRect(px + 3, py + 2, 1, 1); ctx.fillRect(px + 11, py + 2, 1, 1); // nails
+      ctx.fillStyle = '#503000';
+      if (leftEnd) { ctx.fillRect(px + 1, py + 6, 2, 4); ctx.fillRect(px + 1, py + 9, 1, 2); }
+      if (rightEnd) { ctx.fillRect(px + 13, py + 6, 2, 4); ctx.fillRect(px + 14, py + 9, 1, 2); }
     },
 
     // golden padlock with a steel shackle and a keyhole
@@ -2883,7 +3030,7 @@
       acc -= STEP;
     }
     // Re-fit whenever the window size changes (covers wrappers that never fire 'resize').
-    const size = innerWidth + 'x' + innerHeight + ':' + Config.res;
+    const size = viewSize().join('x') + ':' + Config.res;
     if (size !== lastSize) { lastSize = size; resize(); }
     scene.draw();
     if (fade > 0) {
@@ -2901,7 +3048,7 @@
   }
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { AccountScene, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { AccountScene, Changelog, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

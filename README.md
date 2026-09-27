@@ -103,6 +103,10 @@ seeded generator (`js/levels.js`), so every stage is the same on every playthrou
 - **Climbing**: hold toward a wall and tap jump to climb it; jump without holding to kick off.
 - **Wind** (Chapter 3+): gusts push you back. Wait for the calm, then jump.
 - **Ice** (Chapter 4+): you speed up and slow down slowly.
+- **Ladders**: hold up or down to climb; you can stand on top of them.
+- **Wooden platforms**: jump up through them and land on top; press down to drop back through.
+- **Puzzles**: keys open locked gates; switch orbs flip the blue and red blocks.
+- **Saw blades** (Chapter 2+) and **fire vents** (Chapter 3+).
 - **Embers**: optional collectibles.
 
 ## The mystery
@@ -146,7 +150,8 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Guide**: your goal, the collectables, everything on the mountain, and the controls
 - **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
-  *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*
+  *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*,
+  key bindings (Controls) and the **Changelog** (what's new in each update)
 - **Credits**
 - **Account** (bottom left): sign up / log in / log out, and save or load your saves in the cloud
 - **More** (bottom right): Hardcore mode, and **Multiplayer** (make a room and race your friends with its 4-letter code)

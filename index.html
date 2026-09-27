@@ -14,7 +14,10 @@
   <style>
     html, body {
       margin: 0;
+      width: 100%;
       height: 100%;
+      position: fixed; /* never scroll or grow (iPad Safari can otherwise zoom the page out) */
+      inset: 0;
       background: #000;
       overflow: hidden;
       touch-action: none;
@@ -41,6 +44,10 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     canvas {
+      position: fixed; /* always dead centre, whatever the page does */
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       display: block;

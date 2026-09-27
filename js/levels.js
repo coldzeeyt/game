@@ -33,6 +33,8 @@ function buildLevel(def) {
     ground: (x0, x1, top = 13) => fill(x0, x1, Y(top), R - 1, '#'),
     fill: fillY,
     plat: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), '='),
+    // wooden platform you can jump up through and land on (DOWN drops through)
+    thru: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), '-'),
     crumble: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), 'c'),
     spikes: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), '^'),
     sign: (x, y, text) => L.signs.push({ x, y: Y(y), text }),
@@ -459,14 +461,18 @@ const CHUNKS = {
   // --- going up: a vertical shaft to climb, then carry on higher up
   tower(g) {
     const rise = 2 * Math.floor(g.int(8, 11 + Math.round(g.d * 5)) / 2); // even: ledges every 2 rows
-    const styles = g.chapter === 0 ? ['ladder', 'zig'] : ['ladder', 'zig', 'zig', 'crumble'];
+    const styles = g.chapter === 0 ? ['ladder', 'thru', 'zig'] : ['ladder', 'zig', 'thru', 'crumble'];
     const style = styles[g.chunkNo % styles.length];
     g.floor(3);
     const sx = g.x, top = g.y - rise;
     g.b.ground(sx, sx + 6, g.y); // shaft floor
     g.b.ground(sx + 7, sx + 10, top); // the cliff you're climbing
     if (style === 'ladder') g.b.ladder(sx + 6, top, g.y - 1);
-    else {
+    else if (style === 'thru') {
+      // a stack of wooden platforms across the shaft: jump up through each one
+      for (let yy = top + 2; yy <= g.y - 2; yy += 2) g.b.thru(sx + 1, yy, 6);
+      if (!g.thruSign) { g.b.sign(sx - 2, g.y - 1, 'WOODEN PLATFORMS: JUMP UP THROUGH\nTHEM. PRESS DOWN TO DROP BACK.'); g.thruSign = true; }
+    } else {
       // zig-zag ledges two rows apart, the top one next to the cliff
       let right = true;
       for (let yy = top + 2; yy <= g.y - 2; yy += 2) {
@@ -617,7 +623,7 @@ function generateStage(chapter, stage, index) {
 
 // Rows passed to the builder are band rows; add the band offset.
 const ROW_ARGS = {
-  start: [1], ground: [2], plat: [1], crumble: [1], spikes: [1], sign: [1], checkpoint: [1], spring: [1],
+  start: [1], ground: [2], plat: [1], thru: [1], crumble: [1], spikes: [1], sign: [1], checkpoint: [1], spring: [1],
   crystal: [1], ember: [1], mover: [2], flag: [1], everflame: [1], ice: [1], ladder: [1, 2], fragment: [1],
   watcher: [1], key: [1], gate: [1, 2], orb: [1], blue: [2, 3], red: [2, 3],
 };
