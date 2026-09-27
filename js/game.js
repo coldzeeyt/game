@@ -286,6 +286,8 @@
     },
   };
 
+  const DOWNLOAD_URL = 'https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice-Windows.zip';
+
   const Title = {
     enter() {
       this.save = SaveGame.load();
@@ -299,6 +301,10 @@
         { id: 'settings', label: 'SETTINGS' },
         { id: 'credits', label: 'CREDITS' },
       );
+      // In a desktop web browser, offer the Windows app (built by GitHub Actions).
+      const isApp = /Electron/i.test(navigator.userAgent);
+      const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      if (!isApp && !isTouch) items.splice(items.length - 2, 0, { id: 'download', label: 'DOWNLOAD FOR PC' });
       this.menu = makeMenu(items, 102, 15);
     },
     update() {
@@ -308,6 +314,7 @@
       if (c.id === 'continue') startLevel(LEVELS[this.save.level], this.save);
       else if (c.id === 'guide') setScene(Guide);
       else if (c.id === 'lore') setScene(Lore);
+      else if (c.id === 'download') window.open(DOWNLOAD_URL, '_blank', 'noopener');
       else if (c.id === 'new') setScene(Story);
       else if (c.id === 'tutorial') startLevel(LEVELS.tutorial);
       else if (c.id === 'settings') setScene(Settings);

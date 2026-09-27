@@ -32,6 +32,16 @@ npx @electron/packager . Precipice --platform=win32 --arch=x64 --icon=icon.ico  
 
 F11 toggles fullscreen in the desktop app.
 
+Every push to `main` also builds the Windows app with GitHub Actions
+(`.github/workflows/build-windows.yml`) and publishes it as the latest release:
+https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice-Windows.zip
+(the **Download for PC** button on the title screen links there).
+
+### Phones & tablets
+
+On touch screens, on-screen buttons appear: a D-pad (move / aim dash), **JUMP**, **DASH**
+and **II** (pause / back). Tap menu items to pick them.
+
 The game renders at 480×270 and scales up in whole steps to fill the window (4× = 1920×1080).
 
 ## Controls

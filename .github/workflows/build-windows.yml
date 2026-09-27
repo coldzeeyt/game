@@ -1,0 +1,45 @@
+# Builds the Windows desktop app (Electron) on every push to main and
+# publishes it as the latest GitHub Release, so the game's "DOWNLOAD FOR PC"
+# button (and anyone else) can grab:
+#   https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice-Windows.zip
+name: Build Windows app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Package for Windows
+        run: >
+          npx --yes @electron/packager@20 . Precipice
+          --platform=win32 --arch=x64 --electron-version=44.4.5
+          --icon=icon.ico --asar --out=dist --overwrite
+          --ignore="^/\.github" --ignore="^/dist" --ignore="^/README\.md$"
+          --app-copyright="ColdzeeYT"
+          --win32metadata.ProductName=Precipice
+          --win32metadata.FileDescription=Precipice
+
+      - name: Zip
+        run: cd dist && zip -rq ../Precipice-Windows.zip Precipice-win32-x64
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Precipice (build ${{ github.run_number }})
+          body: Windows version of Precipice. Unzip and run Precipice.exe.
+          files: Precipice-Windows.zip
+          make_latest: true
