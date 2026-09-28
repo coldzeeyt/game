@@ -512,13 +512,13 @@
   };
 
   // ---------------------------------------------------------------- stories
-  // Story 1 is this game. The rest are slots for future storylines or game modes:
+  // Story 1 is this game. The rest are slots for future storylines:
   // fill one in (name, about, open: true) when it's ready.
   const STORIES = [
     { name: 'STORY 1: PRECIPICE', about: 'ASH, THE EVERFLAME AND THE WATCHER', open: true },
-    { name: 'STORY 2', about: 'A NEW STORYLINE OR GAME MODE' },
-    { name: 'STORY 3', about: 'A NEW STORYLINE OR GAME MODE' },
-    { name: 'STORY 4', about: 'A NEW STORYLINE OR GAME MODE' },
+    { name: 'STORY 2', about: 'A NEW STORYLINE' },
+    { name: 'STORY 3', about: 'A NEW STORYLINE' },
+    { name: 'STORY 4', about: 'A NEW STORYLINE' },
   ];
   const Stories = {
     enter() { this.index = 0; this.t = 0; this.locked = 0; },
@@ -966,7 +966,7 @@
     { title: 'UPDATE 1.8', text: [
       'STORIES & UPDATES', '',
       '- STORIES BUTTON AT THE TOP OF THE TITLE SCREEN:',
-      '  MORE STORYLINES AND GAME MODES ARE COMING',
+      '  MORE STORYLINES ARE COMING',
       '- THE WINDOWS APP NOW UPDATES ITSELF',
       '- NEW APP ICON: ASH IN THE RED CAP',
       '- QUOTATION MARKS SHOW UP IN THE STORY TEXT',

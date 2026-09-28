@@ -166,7 +166,7 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*,
   and key bindings (Controls)
-- **Stories** (top): Story 1 is Precipice; more storylines / game modes are coming (greyed out for now)
+- **Stories** (top): Story 1 is Precipice; more storylines are coming (greyed out for now)
 - **Credits**, plus the **Changelog** (what's new in each update)
 - **Account** (bottom left): sign up / log in / log out, and save or load your saves in the cloud
 - **More** (bottom right): Hardcore mode, and **Multiplayer** (make a room and race your friends with its 4-letter code)
