@@ -167,7 +167,7 @@ begins, so you can leave between chapters but not mid-chapter.
 ## Credits
 
 - Game & design: ColdzeeYT
-- Music: "Silver Hand Man" by viraxor (title), "This Should Be in a Video Game" by Pianomations (end credits)
+- Music: "Silver Hand Man" by viraxor (title), "This Should Be in a Video Game" by Pianomations (end credits), "I Made This and Then Cried Until 3 AM" by disappiercing (endings)
 - Source: https://github.com/coldzeeyt/precipice
 - Playtesters: pugsnpigs, ColdzeeYT
 
@@ -188,5 +188,5 @@ js/net.js           online multiplayer rooms (PeerJS)
 js/account.js       accounts and cloud saves (talks to server/)
 js/game.js          input, scenes, player physics and rendering
 server/             account + cloud save server (deployed on Railway)
-assets/music/       title song (Silver Hand Man) and credits song (This Should Be in a Video Game)
+assets/music/       title song, ending theme and credits song
 ```

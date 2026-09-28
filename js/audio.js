@@ -1,5 +1,8 @@
 // Title music + tiny 8-bit sound effects synthesized with WebAudio.
 const TITLE_TRACKS = ['assets/music/silver-hand-man.mp3'];
+// The ending theme (both story endings and the results after them):
+// "I Made This and Then Cried Until 3 AM" by disappiercing.
+const ENDING_TRACK = 'assets/music/i-made-this-and-then-cried-until-3-am.mp3';
 // Plays once over the end credits: "This Should Be in a Video Game" by Pianomations.
 const CREDITS_TRACK = 'assets/music/this-should-be-in-a-video-game.mp3';
 
@@ -52,6 +55,21 @@ const Sound = {
     }
     this.music.volume = this.musicVolume;
     safePlay(this.music);
+  },
+
+  // Switch the main player to another song (looped), from the start.
+  playSong(src) {
+    if (!this.music) return;
+    clearInterval(this.fade);
+    if (!this.music.src.endsWith(src)) this.music.src = src;
+    try { this.music.currentTime = 0; } catch (e) { /* not loaded yet */ }
+    this.music.loop = true;
+    this.music.volume = this.musicVolume;
+    safePlay(this.music);
+  },
+  // Back to the title song if something else was playing.
+  ensureTitle() {
+    if (this.music && !this.music.src.endsWith(TITLE_TRACKS[0])) this.playMusic(true);
   },
 
   fadeOutMusic(ms = 600) {

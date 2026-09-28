@@ -408,6 +408,7 @@
 
   const Title = {
     enter() {
+      Sound.ensureTitle();
       this.cont = Slots.latest();
       const items = [];
       if (this.cont >= 0) items.push({ id: 'continue', label: 'CONTINUE' });
@@ -896,8 +897,10 @@
       '- SCROLLING CREDITS AND THANKS AFTER',
       '  THE TRUE ENDING, WITH A NOTE FROM THE DEV',
       '- AN EPILOGUE, THEN A LITTLE SCENE WITH ASH',
-      '- NEW CREDITS SONG: THIS SHOULD BE IN A',
-      '  VIDEO GAME BY PIANOMATIONS',
+      '- CREDITS SONG: THIS SHOULD BE IN A VIDEO GAME',
+      '  BY PIANOMATIONS',
+      '- ENDING THEME: I MADE THIS AND THEN CRIED',
+      '  UNTIL 3 AM BY DISAPPIERCING',
       '- THE CHANGELOG MOVED INTO CREDITS',
       '- EVERY UPDATE IS IN THE CHANGELOG NOW',
     ] },
@@ -1167,9 +1170,9 @@
   };
 
   // Shared layout for simple title sub-screens (credits).
-  function subScreen(title, h = 210) {
+  function subScreen(title, h = 210, w = 300) {
     drawTitleBackdrop();
-    panel(W / 2 - 150, (H - h) / 2, 300, h);
+    panel(W / 2 - w / 2, (H - h) / 2, w, h);
     drawTextOutlined(ctx, title, W / 2, (H - h) / 2 + 12, PAL.C, 2, 'center');
     return (H - h) / 2 + 42; // first content line
   }
@@ -1319,7 +1322,8 @@
       this.menu = makeMenu(this.act === 1
         ? [{ id: 'story', label: 'CONTINUE THE STORY (50 MORE STAGES)' }, { id: 'credits', label: 'CREDITS' }, { id: 'title', label: 'BACK TO TITLE' }]
         : [{ id: 'credits', label: 'CREDITS' }, { id: 'title', label: 'BACK TO TITLE' }], 222, 12);
-      Sound.playMusic(!summary); // keep the song going after the credits roll
+      if (summary) Sound.playMusic(false); // back from the credits roll: the ending theme carries on
+      else Sound.playSong(ENDING_TRACK);
     },
     update() {
       this.t++;
@@ -1757,7 +1761,7 @@
 
   const CREDITS_ROWS = [
     ['GAME & DESIGN', 'ColdzeeYT'],
-    ['MUSIC', 'SILVER HAND MAN - VIRAXOR', 'THIS SHOULD BE IN A VIDEO GAME - PIANOMATIONS'],
+    ['MUSIC', 'SILVER HAND MAN - VIRAXOR', 'THIS SHOULD BE IN A VIDEO GAME - PIANOMATIONS', 'I MADE THIS AND THEN CRIED UNTIL 3 AM - DISAPPIERCING'],
     ['SOUND EFFECTS', '8-BIT SYNTH (WEB AUDIO)'],
     ['ART', 'ORIGINAL 8-BIT PIXEL ART'],
     ['SOURCE', 'GITHUB.COM/COLDZEEYT/PRECIPICE'],
@@ -1765,7 +1769,7 @@
   ];
 
   const Credits = {
-    menu: makeMenu([{ id: 'changelog', label: 'CHANGELOG' }, { id: 'back', label: 'BACK' }], 216, 14),
+    menu: makeMenu([{ id: 'changelog', label: 'CHANGELOG' }, { id: 'back', label: 'BACK' }], 222, 13),
     update() {
       titleUpdate();
       const c = this.menu.update();
@@ -1773,11 +1777,11 @@
       else if (c || hit(...K.back)) { if (!c) Sound.sfx('select'); setScene(Title); }
     },
     draw() {
-      let y = subScreen('CREDITS', 240);
+      let y = subScreen('CREDITS', 258, 360) - 4;
       for (const [head, ...lines] of CREDITS_ROWS) {
         drawText(ctx, head, W / 2, y, PAL.c, 1, 'center');
-        lines.forEach((l, i) => drawText(ctx, l, W / 2, y + 10 + i * 10, PAL.w, 1, 'center'));
-        y += 13 + lines.length * 10;
+        lines.forEach((l, i) => drawText(ctx, l, W / 2, y + 10 + i * 9, PAL.w, 1, 'center'));
+        y += 14 + lines.length * 9;
       }
       this.menu.draw();
     },
