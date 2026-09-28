@@ -702,3 +702,103 @@ LEVELS.boss2 = bossArena('boss2', 9, '10-B THE HOLLOW', {
 });
 LEVELS.boss2.index = CAMPAIGN.length;
 CAMPAIGN.push(LEVELS.boss2);
+
+// ---------------------------------------------------------------- ONLY UP
+// One enormous tower (the same for everyone): no checkpoints, no spikes, no
+// deaths. The only enemy is gravity: slip, and you fall back down.
+const ONLY_UP_ROWS = 720;
+const ONLY_UP_SIGNS = [
+  "DON'T LOOK DOWN.",
+  'STILL GOING? GOOD.',
+  'THE CLOUDS ARE BELOW YOU NOW.',
+  'ASH NEVER GOT THIS HIGH.',
+  'THE WIND HAS NOTHING UP HERE TO PUSH.',
+  'ALMOST THERE. PROBABLY.',
+  'IS THAT THE MOON? KEEP CLIMBING.',
+];
+LEVELS.onlyup = {
+  id: 'onlyup', name: 'ONLY UP', objective: "CLIMB. DON'T FALL.", onlyUp: true,
+  width: 34, rows: ONLY_UP_ROWS,
+  build(b) {
+    const R = ONLY_UP_ROWS, Wd = 34;
+    const r = mulberry32(90210); // fixed seed: everyone climbs the same tower
+    const int = (a, c) => a + Math.floor(r() * (c - a + 1));
+    const at = (row) => row - OFF; // the builder adds OFF to every row
+    b.ground(0, Wd - 1, at(R - 3));
+    b.start(3, at(R - 4));
+    b.sign(6, at(R - 4), "ONLY UP.\nNO CHECKPOINTS. SLIP, AND YOU FALL.\nYOUR PROGRESS SAVES WHEN YOU QUIT.");
+    let x = 8, y = R - 3, w = 5, dir = 1, n = 0, signNo = 0, lastRest = R, dashSign = false;
+    const clampX = (v, lw) => Math.max(1, Math.min(Wd - 1 - lw, v));
+    const ledge = (lx, ly, lw, kind) => {
+      if (kind === 'ice') b.ice(lx, at(ly), lw);
+      else if (kind === 'crumble') b.crumble(lx, at(ly), lw);
+      else b.plat(lx, at(ly), lw);
+    };
+    while (y > 14) {
+      n++;
+      const d = 1 - y / R; // 0 at the bottom, 1 at the top
+      // a rest stop every so often: a wide ledge and a sign
+      if (lastRest - y > 70) {
+        // (a wooden platform, so it never blocks a jump from underneath)
+        const rx = clampX(dir > 0 ? x + w + 1 : x - 9, 8);
+        const ry = y - 2;
+        b.thru(rx, at(ry), 8);
+        b.sign(rx + 3, at(ry - 1), ONLY_UP_SIGNS[signNo++ % ONLY_UP_SIGNS.length]);
+        x = rx; y = ry; w = 8; lastRest = y;
+        continue;
+      }
+      const roll = r();
+      const kinds = d < 0.25 ? ['plat'] : d < 0.55 ? ['plat', 'plat', 'crumble'] : ['plat', 'crumble', 'ice', 'plat'];
+      if (roll < 0.12 && y > 30) {
+        // ladder up the side of the ledge
+        // ladder over the end of this ledge (so you can stand at its foot); step off at the top
+        const h = int(5, 8);
+        const lx = dir > 0 ? x + w - 1 : x;
+        const nx = dir > 0 ? lx + 1 : lx - 3;
+        if (nx < 1 || nx + 3 > Wd - 1) { dir = -dir; continue; }
+        b.ladder(lx, at(y - h), at(y - 1));
+        b.plat(nx, at(y - h), 3);
+        x = nx; y -= h; w = 3;
+      } else if (roll < 0.22 && y > 30) {
+        // a stack of wooden platforms to jump up through
+        const count = int(3, 5);
+        for (let i = 1; i <= count; i++) b.thru(x, at(y - i * 2), Math.max(3, w));
+        y -= count * 2; w = Math.max(3, w);
+      } else if (roll < 0.30 && y > 30 && d > 0.15) {
+        // a spring to a high ledge
+        // the landing ledge sits beside the spring's column, never above it
+        const sx = dir > 0 ? x + w - 1 : x;
+        const nx = dir > 0 ? sx + 1 : sx - 3;
+        if (nx < 1 || nx + 3 > Wd - 1) { dir = -dir; continue; }
+        b.spring(sx, at(y - 1));
+        y -= 7; x = nx; w = 3;
+        ledge(x, y, w, 'plat');
+      } else if (roll < 0.36 && y > 30 && d > 0.3) {
+        // dash up: a crystal in the air on the way to a ledge far above
+        // (the target is a wooden platform, so you can dash up through it)
+        const nx = clampX(x + dir * 2, 3);
+        if (!dashSign) { b.sign(x + Math.floor(w / 2), at(y - 1), 'SEE THAT CRYSTAL?\nJUMP, THEN DASH UP THROUGH IT.'); dashSign = true; }
+        b.crystal(nx + 1, at(y - 4));
+        y -= 5; x = nx; w = 3;
+        b.thru(x, at(y), w);
+      } else {
+        // an ordinary jump: higher jumps get shorter gaps
+        const dy = int(1, 2), gap = dy === 2 ? int(1, 2) : int(2, 3);
+        const nw = Math.max(2, Math.round(4 - d * 2 - r()));
+        let nx = dir > 0 ? x + w + gap : x - gap - nw;
+        if (nx < 1 || nx + nw > Wd - 1) { dir = -dir; nx = dir > 0 ? x + w + gap : x - gap - nw; }
+        let above = false;
+        if (nx < 1 || nx + nw > Wd - 1) { nx = clampX(x, nw); above = true; }
+        y -= dy + (above ? 1 : 0); x = nx; w = nw;
+        if (above) b.thru(x, at(y), w); // straight above us: make it jump-through
+        else ledge(x, y, w, kinds[Math.floor(r() * kinds.length)]);
+      }
+      if (r() < 0.2) dir = -dir; // wander left and right
+    }
+    // the top
+    const tx = clampX(x - 3, 10);
+    b.thru(tx, at(y - 2), 10);
+    b.flag(tx + 7, at(y - 3));
+    b.sign(tx + 2, at(y - 3), 'YOU MADE IT.\nTHERE IS NOTHING HIGHER THAN THIS.');
+  },
+};

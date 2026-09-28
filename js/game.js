@@ -571,12 +571,18 @@
       this.text = ''; this.loaded = false; this.dirty = false; this.saving = false; this.editT = 0; this.scroll = 0; this.t = 0; this.bs = 0;
       this.canEdit = Account.isDev();
       this.savedAt = 0;
+      this.refresh();
+    },
+    // Fetch the latest notes from the server (the REFRESH button does this too).
+    refresh() {
+      if (this.dirty) this.save(); // the dev's unsaved typing goes up first
       this.status = 'LOADING...';
       Account.loadNotes().then((n) => {
         this.text = n.text || ''; this.savedAt = n.savedAt || 0; this.loaded = true; this.status = '';
         if (!this.canEdit) this.scroll = Math.max(0, wrapNotes(this.text).length - NOTE_ROWS); // readers start at the top
       }, (e) => { this.status = e.message; });
     },
+    refreshRect() { return { x: W / 2 + 124, y: 20, w: 60, h: 14 }; }, // top right of the notes box
     save() {
       if (!this.loaded || this.saving) return;
       this.saving = true; this.dirty = false; this.status = 'SAVING...';
@@ -588,11 +594,20 @@
       titleUpdate();
       this.t++;
       if (hit('Escape') || (!this.canEdit && hit('Backspace'))) { if (this.dirty) this.save(); Sound.sfx('select'); setScene(Title); return; }
+      const m = Input.mouse;
+      const onRefresh = overlap({ x: m.x, y: m.y, w: 1, h: 1 }, this.refreshRect());
+      this.hover = onRefresh;
+      if ((m.click && onRefresh) || (!this.canEdit && hit('KeyR', 'F5'))) {
+        Sound.sfx('select');
+        if (hit('F5')) Input.pressed.delete('F5');
+        this.refresh();
+        return;
+      }
       if (!this.loaded) return;
       const lines = wrapNotes(this.text).length;
       if (hit(...(this.canEdit ? ['ArrowUp'] : K.up))) this.scroll = Math.min(this.scroll + 1, Math.max(0, lines - NOTE_ROWS));
       if (hit(...(this.canEdit ? ['ArrowDown'] : K.down))) this.scroll = Math.max(0, this.scroll - 1);
-      if (!this.canEdit) { if (Input.mouse.click) { Sound.sfx('select'); setScene(Title); } return; }
+      if (!this.canEdit) return;
       // the dev types
       if (IS_TOUCH && Input.mouse.click) {
         const add = prompt('ADD A LINE TO THE DEV NOTES');
@@ -630,8 +645,15 @@
       if (start + NOTE_ROWS < lines.length) drawText(ctx, 'v MORE', W / 2 + 186, 56 + (NOTE_ROWS - 1) * 12, PAL.n, 1, 'right');
       const st = this.status || (this.dirty ? 'EDITED' : '');
       drawText(ctx, st, W / 2 - 186, 238, st.startsWith('NOT') || st.startsWith('CANNOT') ? PAL.e : PAL.G);
-      const help = !this.canEdit ? 'UP/DOWN: SCROLL   ESC: BACK' : IS_TOUCH ? 'TAP: ADD A LINE   PAUSE: BACK' : 'TYPE   ENTER: NEW LINE   ESC: SAVE & BACK';
+      const help = !this.canEdit ? 'UP/DOWN: SCROLL   ESC: BACK' : IS_TOUCH ? 'TAP: ADD A LINE   PAUSE: BACK' : 'ENTER: NEW LINE   ESC: SAVE & BACK';
       drawText(ctx, help, W / 2 + 186, 238, PAL.n, 1, 'right');
+      // REFRESH button (R for readers): fetch the newest notes
+      const r = this.refreshRect();
+      ctx.fillStyle = this.hover ? 'rgba(60,188,252,0.25)' : 'rgba(8,6,28,0.8)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = this.hover ? PAL.c : '#342468';
+      ctx.fillRect(r.x, r.y, r.w, 1); ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1); ctx.fillRect(r.x, r.y, 1, r.h); ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
+      drawText(ctx, 'REFRESH', r.x + r.w / 2, r.y + 4, this.hover ? PAL.c : '#b8c4f0', 1, 'center');
     },
   };
 
@@ -1990,12 +2012,29 @@
   };
 
   // ---------------------------------------------------------------- more / hardcore
+  // ONLY UP progress: best height, best time to the top, and where you left off.
+  const OnlyUp = {
+    key: 'precipice.onlyup',
+    resume: false,
+    load() { try { return JSON.parse(localStorage.getItem(this.key)) || {}; } catch (e) { return {}; } },
+    save(d) { try { localStorage.setItem(this.key, JSON.stringify(d)); } catch (e) { /* storage unavailable */ } },
+    start(resume) {
+      this.resume = resume;
+      if (!resume) { const s = this.load(); this.save({ best: s.best || 0, bestTime: s.bestTime || 0, top: s.top }); }
+      startLevel(LEVELS.onlyup);
+    },
+  };
+
   const More = {
     enter() {
       this.save = Slots.load(Slots.HARDCORE);
+      const ou = OnlyUp.load();
       const items = [];
       if (this.save && !this.save.done) items.push({ id: 'cont', label: 'CONTINUE HARDCORE' });
-      items.push({ id: 'new', label: 'NEW HARDCORE RUN' }, { id: 'multi', label: 'MULTIPLAYER' }, { id: 'back', label: 'BACK' });
+      items.push({ id: 'new', label: 'NEW HARDCORE RUN' });
+      if (ou.x !== undefined) items.push({ id: 'ou', label: 'ONLY UP: CONTINUE' }, { id: 'ounew', label: 'ONLY UP: START OVER' });
+      else items.push({ id: 'ounew', label: 'ONLY UP' + (ou.best ? ' (BEST ' + ou.best + 'M)' : '') });
+      items.push({ id: 'multi', label: 'MULTIPLAYER' }, { id: 'back', label: 'BACK' });
       this.menu = makeMenu(items, 140, 16);
       this.confirm = false;
     },
@@ -2010,6 +2049,8 @@
       if (!c) return;
       if (c.id === 'back') setScene(Title);
       else if (c.id === 'multi') setScene(Multi);
+      else if (c.id === 'ou') OnlyUp.start(true);
+      else if (c.id === 'ounew') OnlyUp.start(false);
       else if (c.id === 'cont') playSlot(Slots.HARDCORE);
       else if (this.save && !this.save.done) this.confirm = true;
       else this.startNew();
@@ -2135,6 +2176,38 @@
         floorY: (L0.h - 2) * T - 15,
       } : null;
       if (run && (run.data.cp >= 0 || run.data.stageTime > 0) && !this.hardcore) this.loadSave(run.data);
+      this.onlyUp = !!def.onlyUp;
+      if (this.onlyUp) this.startOnlyUp();
+    },
+
+    // ---- ONLY UP: height meter, best height, a saved spot, and painful falls
+    startOnlyUp() {
+      const s = OnlyUp.load();
+      this.ou = { best: s.best || 0, bestTime: s.bestTime || 0, falls: s.falls || 0, peak: 0, fell: 0, fellT: 0, saveT: 0 };
+      if (OnlyUp.resume && s.x !== undefined) {
+        this.player.x = s.x; this.player.y = s.y;
+        this.time = s.time || 0;
+        this.camY = clamp(s.y + 8 - H * 0.6, 0, this.level.h * T - H);
+      } else if (!OnlyUp.resume) this.ou.falls = 0;
+      this.intro = 200;
+    },
+    heightOf(p) { return Math.max(0, Math.round(((this.level.h - 3) * T - (p.y + p.h)) / T)); },
+    updateOnlyUp() {
+      const p = this.player, o = this.ou, h = this.heightOf(p);
+      if (h > o.best) o.best = h;
+      if (!p.onGround && !p.climbing) o.peak = Math.max(o.peak, h);
+      else {
+        if (o.peak - h >= 12) { o.fell = o.peak - h; o.fellT = 150; o.falls++; Sound.sfx('die'); this.shake = 6; } // a big fall
+        o.peak = h;
+      }
+      if (o.fellT > 0) o.fellT--;
+      if (++o.saveT >= 120 && p.onGround) { o.saveT = 0; this.saveOnlyUp(); }
+    },
+    saveOnlyUp(done) {
+      const p = this.player, o = this.ou;
+      const d = { best: o.best, bestTime: o.bestTime, falls: o.falls, time: this.time, x: Math.round(p.x), y: Math.round(p.y) };
+      if (done) { delete d.x; delete d.y; d.time = 0; d.falls = 0; d.top = true; if (!d.bestTime || this.time < d.bestTime) d.bestTime = this.time; }
+      OnlyUp.save(d);
     },
 
     // Continue from a saved checkpoint, keeping collectables and stats.
@@ -2168,6 +2241,7 @@
     },
 
     quit() {
+      if (this.onlyUp) this.saveOnlyUp();
       this.saveProgress();
       toTitle();
     },
@@ -2391,6 +2465,7 @@
       this.time++;
       if (this.intro > 0) this.intro--;
       this.updatePlayer();
+      if (this.onlyUp) this.updateOnlyUp();
       if (this.netOn && frame % 3 === 0) {
         const p = this.player;
         Net.send({ t: 'st', x: Math.round(p.x), y: Math.round(p.y), f: p.face, p: this.poseOf(p), d: p.dead ? 1 : 0, l: this.level.id });
@@ -2746,6 +2821,7 @@
       }
       const f = L.flag;
       if (f && overlap(p, { x: f.x * T + 4, y: (f.y - 3) * T, w: 8, h: 4 * T })) {
+        if (this.onlyUp) { this.ou.best = Math.max(this.ou.best, this.heightOf(p)); this.saveOnlyUp(true); }
         this.state = 'clear';
         this.clearT = 0;
         this.onStageClear();
@@ -3322,6 +3398,14 @@
       const L = this.level;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, 0, W, 11);
+      if (this.onlyUp) {
+        const o = this.ou;
+        drawText(ctx, 'HEIGHT ' + this.heightOf(this.player) + 'M', 4, 2, PAL.w);
+        drawText(ctx, 'BEST ' + o.best + 'M   FALLS ' + o.falls, W / 2, 2, PAL.C, 1, 'center');
+        drawText(ctx, formatTime(this.time), W - 4, 2, PAL.w, 1, 'right');
+        if (o.fellT > 0 && (o.fellT > 40 || blink(6))) drawTextOutlined(ctx, 'OUCH! -' + o.fell + 'M', W / 2, 40, PAL.e, 2, 'center');
+        return;
+      }
       const label = this.def.index !== undefined ? this.def.name.split(' ')[0] + '  ' : '';
       drawText(ctx, label + 'DEATHS ' + this.deaths, 4, 2, PAL.w);
       if (this.hardcore) drawText(ctx, 'HARDCORE', W - 40, 2, PAL.e, 1, 'right');
@@ -3425,6 +3509,17 @@
 
     drawClear() {
       if (this.netOn) return this.drawNetResults();
+      if (this.onlyUp) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, W, H);
+        panel(W / 2 - 120, 70, 240, 120, PAL.y);
+        drawTextOutlined(ctx, 'THE TOP!', W / 2, 84, PAL.y, 2, 'center');
+        drawText(ctx, 'HEIGHT  ' + this.ou.best + 'M', W / 2, 114, PAL.w, 1, 'center');
+        drawText(ctx, 'TIME    ' + formatTime(this.time), W / 2, 126, PAL.w, 1, 'center');
+        drawText(ctx, 'FALLS   ' + this.ou.falls, W / 2, 138, PAL.e, 1, 'center');
+        if (this.clearT > 60 && blink(20)) drawText(ctx, 'PRESS ENTER', W / 2, 170, PAL.C, 1, 'center');
+        return;
+      }
       const L = this.level;
       const tut = L.id === 'tutorial';
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
