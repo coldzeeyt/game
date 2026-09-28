@@ -186,7 +186,7 @@ index.html          page + canvas
 main.js             Electron entry point (desktop app)
 manifest.webmanifest, sw.js   installable / offline web app
 js/touch.js         on-screen buttons for phones
-icon.png / .ico     app icon (a memory fragment)
+icon.png / .ico     app icon (Ash in the red cap)
 js/config.js        settings: resolution, graphics presets, volume
 js/font.js          5x7 and 3x5 bitmap pixel fonts
 js/gfx.js           sprites, tiles, decorations, background (all drawn in code)
