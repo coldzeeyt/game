@@ -24,6 +24,10 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      # Stamp the build number into the app (1.0.N) so Precipice.exe can tell
+      # when a newer release (build-N) is out and update itself.
+      - name: Set version
+        run: npm version 1.0.${{ github.run_number }} --no-git-tag-version --allow-same-version
       - name: Build portable Precipice.exe
         run: npx electron-builder --win portable --x64 --publish never
       - uses: actions/upload-artifact@v4

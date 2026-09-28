@@ -428,15 +428,15 @@
       if (!isApp && !isTouch) items.splice(items.length - 2, 0, { id: 'download', label: 'DOWNLOAD FOR PC', url: DOWNLOAD_URL });
       if (!isApp && /Android/i.test(ua)) items.splice(items.length - 2, 0, { id: 'download', label: 'DOWNLOAD FOR ANDROID', url: ANDROID_URL });
       this.menu = makeMenu(items, 88, items.length > 10 ? 12 : items.length > 9 ? 13 : 14);
-      this.corner = -1; // -1: main menu, 0: ACCOUNT (bottom left), 1: MORE (bottom right)
+      this.corner = -1; // -1: main menu, 0: ACCOUNT (bottom left), 1: MORE (bottom right), 2: STORIES (top)
     },
-    // The two corner buttons. LEFT/RIGHT (or the mouse) reach them from the menu.
+    // The extra buttons. LEFT/RIGHT reach the bottom corners, UP from the top of the menu reaches STORIES.
     cornerRects() {
       const a = this.cornerLabels();
-      const wa = textWidth(a[0]) + 16, wb = textWidth(a[1]) + 16;
-      return [{ x: 6, y: H - 22, w: wa, h: 16 }, { x: W - 6 - wb, y: H - 22, w: wb, h: 16 }];
+      const wa = textWidth(a[0]) + 16, wb = textWidth(a[1]) + 16, wc = textWidth(a[2]) + 16;
+      return [{ x: 6, y: H - 22, w: wa, h: 16 }, { x: W - 6 - wb, y: H - 22, w: wb, h: 16 }, { x: W / 2 - wc / 2, y: 14, w: wc, h: 16 }];
     },
-    cornerLabels() { return [Account.loggedIn() ? 'ACCOUNT: ' + Account.user : 'ACCOUNT', 'MORE']; },
+    cornerLabels() { return [Account.loggedIn() ? 'ACCOUNT: ' + Account.user : 'ACCOUNT', 'MORE', 'STORIES']; },
     setCorner(c) {
       if (c === this.corner) return;
       if (this.corner < 0) this.menuIndex = this.menu.index;
@@ -446,7 +446,7 @@
     },
     pickCorner() {
       Sound.sfx('select');
-      setScene(this.corner === 0 ? AccountScene : More);
+      setScene([AccountScene, More, Stories][this.corner]);
     },
     update() {
       titleUpdate();
@@ -462,6 +462,12 @@
       }
       if (hit(...K.left)) this.setCorner(0);
       else if (hit(...K.right)) this.setCorner(1);
+      else if (this.corner < 0 && this.menu.index === 0 && hit(...K.up)) { this.setCorner(2); return; }
+      if (this.corner === 2) {
+        if (hit(...K.down)) { this.menuIndex = 0; this.setCorner(-1); }
+        else if (hit(...K.ok)) this.pickCorner();
+        return;
+      }
       if (this.corner >= 0) {
         if (hit(...K.up, ...K.down)) this.setCorner(-1);
         else if (hit(...K.ok)) this.pickCorner();
@@ -502,6 +508,71 @@
         ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
         drawText(ctx, labels[i], r.x + r.w / 2, r.y + 5, sel ? PAL.c : '#b8c4f0', 1, 'center');
       });
+    },
+  };
+
+  // ---------------------------------------------------------------- stories
+  // Story 1 is this game. The rest are slots for future storylines or game modes:
+  // fill one in (name, about, open: true) when it's ready.
+  const STORIES = [
+    { name: 'STORY 1: PRECIPICE', about: 'ASH, THE EVERFLAME AND THE WATCHER', open: true },
+    { name: 'STORY 2', about: 'A NEW STORYLINE OR GAME MODE' },
+    { name: 'STORY 3', about: 'A NEW STORYLINE OR GAME MODE' },
+    { name: 'STORY 4', about: 'A NEW STORYLINE OR GAME MODE' },
+  ];
+  const Stories = {
+    enter() { this.index = 0; this.t = 0; this.locked = 0; },
+    rowY(i) { return 58 + i * 38; },
+    update() {
+      titleUpdate();
+      this.t++;
+      if (this.locked > 0) this.locked--;
+      const n = STORIES.length + 1; // + BACK
+      if (hit(...K.up)) { this.index = (this.index + n - 1) % n; Sound.sfx('move'); }
+      if (hit(...K.down)) { this.index = (this.index + 1) % n; Sound.sfx('move'); }
+      if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); return; }
+      const m = Input.mouse;
+      let chosen = hit(...K.ok);
+      if (m.moved || m.click) {
+        for (let i = 0; i < n; i++) {
+          const y = i < STORIES.length ? this.rowY(i) : 216;
+          if (m.y < y - 4 || m.y > y + (i < STORIES.length ? 30 : 12) || Math.abs(m.x - W / 2) > 160) continue;
+          if (m.moved && this.index !== i) { this.index = i; Sound.sfx('move'); }
+          if (m.click) { this.index = i; chosen = true; }
+        }
+      }
+      if (!chosen) return;
+      const st = STORIES[this.index];
+      if (!st) { Sound.sfx('select'); setScene(Title); return; }
+      if (st.open) { Sound.sfx('select'); setScene(Title); return; } // story 1 is the game you're in
+      this.locked = 60;
+      Sound.sfx('die');
+    },
+    draw() {
+      drawTitleBackdrop();
+      if (!animatedPanel(W / 2 - 170, 8, 340, 250, this.t)) return;
+      drawTextOutlined(ctx, 'STORIES', W / 2, 18, PAL.C, 2, 'center');
+      STORIES.forEach((st, i) => {
+        const y = this.rowY(i), sel = i === this.index;
+        const x = W / 2 - 150;
+        ctx.fillStyle = sel ? (st.open ? 'rgba(60,188,252,0.18)' : 'rgba(120,120,140,0.18)') : 'rgba(8,6,28,0.6)';
+        ctx.fillRect(x, y - 4, 300, 32);
+        ctx.fillStyle = sel ? (st.open ? PAL.c : '#7c7c7c') : '#342468';
+        ctx.fillRect(x, y - 4, 300, 1); ctx.fillRect(x, y + 27, 300, 1); ctx.fillRect(x, y - 4, 1, 32); ctx.fillRect(x + 299, y - 4, 1, 32);
+        if (st.open) {
+          drawText(ctx, st.name, x + 12, y + 2, sel ? PAL.c : PAL.w);
+          drawText(ctx, st.about, x + 12, y + 14, PAL.m);
+          drawText(ctx, 'PLAYING NOW', x + 288, y + 8, PAL.G, 1, 'right');
+        } else {
+          drawText(ctx, st.name + ': ???', x + 12, y + 2, '#6c6c6c');
+          drawText(ctx, st.about, x + 12, y + 14, '#4c4c4c');
+          ctx.globalAlpha = 0.55; Play.drawPadlock(x + 272, y + 5); ctx.globalAlpha = 1;
+          drawText(ctx, 'COMING SOON', x + 262, y + 8, '#6c6c6c', 1, 'right');
+        }
+      });
+      const bs = this.index === STORIES.length;
+      drawText(ctx, (bs ? '> ' : '') + 'BACK' + (bs ? ' <' : ''), W / 2, 216, bs ? PAL.c : '#b8c4f0', 1, 'center');
+      if (this.locked > 0) drawTextOutlined(ctx, 'NOT YET! THIS STORY IS STILL BEING WRITTEN.', W / 2, 236, PAL.y, 1, 'center');
     },
   };
 
@@ -892,6 +963,13 @@
 
   // What's new, newest first (Credits > Changelog).
   const CHANGELOG = [
+    { title: 'UPDATE 1.8', text: [
+      'STORIES & UPDATES', '',
+      '- STORIES BUTTON AT THE TOP OF THE TITLE SCREEN:',
+      '  MORE STORYLINES AND GAME MODES ARE COMING',
+      '- THE WINDOWS APP NOW UPDATES ITSELF',
+      '- QUOTATION MARKS SHOW UP IN THE STORY TEXT',
+    ] },
     { title: 'UPDATE 1.7', text: [
       'THE CREDITS ROLL', '',
       '- SCROLLING CREDITS AND THANKS AFTER',
@@ -3224,7 +3302,7 @@
   }
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { AccountScene, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { AccountScene, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

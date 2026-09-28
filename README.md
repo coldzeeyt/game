@@ -35,6 +35,13 @@ publishes them as the latest release:
 The title screen shows **Download for PC** (desktop browsers) or **Download for Android**
 (Android browsers).
 
+### Automatic updates (Windows)
+
+Precipice.exe updates itself. Every push to `main` builds a new release (`build-N`), and each exe
+knows its own build number. When the game starts it checks the latest release; if there's a newer
+one it downloads it next to the exe and asks to restart (or installs it when you close the game).
+Exes from before this feature need to be downloaded once more by hand.
+
 ### Desktop app (Electron) from source
 
 ```sh
@@ -159,6 +166,7 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*,
   and key bindings (Controls)
+- **Stories** (top): Story 1 is Precipice; more storylines / game modes are coming (greyed out for now)
 - **Credits**, plus the **Changelog** (what's new in each update)
 - **Account** (bottom left): sign up / log in / log out, and save or load your saves in the cloud
 - **More** (bottom right): Hardcore mode, and **Multiplayer** (make a room and race your friends with its 4-letter code)
