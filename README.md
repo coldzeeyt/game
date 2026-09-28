@@ -40,7 +40,7 @@ The title screen shows **Download for PC** (desktop browsers) or **Download for 
 Precipice.exe updates itself. Every push to `main` builds a new release (`build-N`), and each exe
 knows its own build number. When the game starts it checks the latest release; if there's a newer
 one it downloads it next to the exe and asks to restart (or installs it when you close the game).
-Exes from before this feature need to be downloaded once more by hand.
+You can also check any time in **Settings > Updates**. Exes from before this feature need to be downloaded once more by hand.
 
 ### Desktop app (Electron) from source
 

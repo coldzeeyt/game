@@ -1057,7 +1057,8 @@
       'STORIES & UPDATES', '',
       '- STORIES BUTTON AT THE TOP OF THE TITLE SCREEN:',
       '  MORE STORYLINES ARE COMING',
-      '- THE WINDOWS APP NOW UPDATES ITSELF',
+      '- THE WINDOWS APP NOW UPDATES ITSELF (OR CHECK IN',
+      '  SETTINGS > UPDATES)',
       '- NEW APP ICON: ASH IN THE RED CAP',
       '- LORE: THREE NEW PAGES ABOUT WREN (NO SPOILERS:',
       '  THEY UNLOCK AS YOU PLAY)',
@@ -1174,7 +1175,8 @@
   }
 
   const Settings = {
-    rows: ['res', 'full', 'gfx', 'music', 'sfx', 'controls', 'back'],
+    // "updates" only in the Windows app (the web version always loads the newest files)
+    get rows() { return window.precipiceApp ? ['res', 'full', 'gfx', 'music', 'sfx', 'controls', 'updates', 'back'] : ['res', 'full', 'gfx', 'music', 'sfx', 'controls', 'back']; },
     enter() { this.index = 0; },
     change(row, dir) {
       if (row === 'res') Config.res = (Config.res + dir + RESOLUTIONS.length) % RESOLUTIONS.length;
@@ -1186,7 +1188,13 @@
       Config.save();
       Sound.sfx('move');
     },
-    rowY(i) { return 60 + i * 24; },
+    rowY(i) { return 60 + i * (this.rows.length > 7 ? 21 : 24); },
+    checkUpdates() {
+      Sound.sfx('select');
+      const st = UpdateBox.st;
+      if (st && st.state === 'ready') { UpdateBox.done = false; UpdateBox.shown = false; return; } // show the box again
+      window.precipiceApp.checkNow();
+    },
     update() {
       titleUpdate();
       const n = this.rows.length;
@@ -1204,6 +1212,7 @@
             this.index = i;
             if (this.rows[i] === 'back') { Sound.sfx('select'); setScene(Title); return; }
             if (this.rows[i] === 'controls') { Sound.sfx('select'); setScene(Controls); return; }
+            if (this.rows[i] === 'updates') { this.checkUpdates(); return; }
             this.change(this.rows[i], m.x < W / 2 + 40 ? -1 : 1);
           }
         }
@@ -1211,6 +1220,7 @@
       if (hit(...K.ok)) {
         if (row === 'back') { Sound.sfx('select'); setScene(Title); return; }
         if (row === 'controls') { Sound.sfx('select'); setScene(Controls); return; }
+        if (row === 'updates') { this.checkUpdates(); return; }
         this.change(row, 1);
       }
       if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); }
@@ -1238,9 +1248,11 @@
           drawText(ctx, (sel ? '> ' : '') + 'BACK' + (sel ? ' <' : ''), W / 2, y, sel ? PAL.c : '#b8c4f0', 1, 'center');
           return;
         }
-        if (row === 'controls') {
-          drawText(ctx, 'CONTROLS', W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
-          drawText(ctx, (sel ? '> ' : '  ') + 'CHANGE KEYS' + (sel ? ' <' : '  '), W / 2 + 80, y, PAL.w, 1, 'center');
+        if (row === 'controls' || row === 'updates') {
+          drawText(ctx, row === 'controls' ? 'CONTROLS' : 'UPDATES', W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
+          const busy = UpdateBox.st && ['checking', 'downloading', 'ready'].includes(UpdateBox.st.state);
+          const what = row === 'controls' ? 'CHANGE KEYS' : sel && !busy ? 'CHECK FOR UPDATES' : UpdateBox.settingsText();
+          drawText(ctx, (sel ? '> ' : '  ') + what + (sel ? ' <' : '  '), W / 2 + 80, y, PAL.w, 1, 'center');
           return;
         }
         drawText(ctx, labels[row], W / 2 - 166, y, sel ? PAL.c : '#b8c4f0');
@@ -3406,6 +3418,17 @@
   const UpdateBox = {
     build: 0, shown: false, done: false, index: 0, t: 0, st: null,
     ready(build) { this.build = build; },
+    // What the UPDATES row in Settings says.
+    settingsText() {
+      const s = this.st;
+      if (!s || s.state === 'idle' || s.state === 'dev') return 'CHECK NOW';
+      if (s.state === 'checking') return 'CHECKING...';
+      if (s.state === 'downloading') return 'DOWNLOADING ' + s.pct + '%';
+      if (s.state === 'ready') return 'READY: INSTALL NOW';
+      if (s.state === 'uptodate') return 'UP TO DATE (BUILD ' + s.build + ')';
+      if (s.state === 'error') return 'FAILED: TRY AGAIN';
+      return 'CHECK NOW';
+    },
     // Small status line for the title screen: this build, and what the updater is doing.
     statusText() {
       const s = this.st;

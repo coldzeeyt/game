@@ -64,6 +64,12 @@ function log(line) {
 }
 ipcMain.handle('update-state', () => state); // for a page that loaded after a change
 ipcMain.on('update-restart', () => installUpdate(true));
+// "Check for updates" in Settings: look again now (unless a check or download is already running).
+ipcMain.on('update-check', () => {
+  if (state.state === 'checking' || state.state === 'downloading') return;
+  if (state.state === 'ready') return setState(state); // already downloaded: the game shows the box again
+  checkForUpdate().catch((e) => setState({ state: 'error', msg: String((e && e.message) || e).toUpperCase().slice(0, 40) }));
+});
 
 async function checkForUpdate() {
   if (process.platform !== 'win32' || !EXE) return setState({ state: 'dev' });

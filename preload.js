@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('precipiceApp', {
     ipcRenderer.invoke('update-state').then(cb);
   },
   restartNow() { ipcRenderer.send('update-restart'); },
+  checkNow() { ipcRenderer.send('update-check'); },
 });
