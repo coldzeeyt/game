@@ -583,6 +583,7 @@
       }, (e) => { this.status = e.message; });
     },
     refreshRect() { return { x: W / 2 + 124, y: 20, w: 60, h: 14 }; }, // top right of the notes box
+    playersRect() { return { x: W / 2 - 184, y: 20, w: 60, h: 14 }; }, // top left, dev only
     save() {
       if (!this.loaded || this.saving) return;
       this.saving = true; this.dirty = false; this.status = 'SAVING...';
@@ -603,6 +604,9 @@
         this.refresh();
         return;
       }
+      const onPlayers = this.canEdit && overlap({ x: m.x, y: m.y, w: 1, h: 1 }, this.playersRect());
+      this.hoverP = onPlayers;
+      if (m.click && onPlayers) { Sound.sfx('select'); if (this.dirty) this.save(); setScene(Players); return; }
       if (!this.loaded) return;
       const lines = wrapNotes(this.text).length;
       if (hit(...(this.canEdit ? ['ArrowUp'] : K.up))) this.scroll = Math.min(this.scroll + 1, Math.max(0, lines - NOTE_ROWS));
@@ -654,6 +658,57 @@
       ctx.fillStyle = this.hover ? PAL.c : '#342468';
       ctx.fillRect(r.x, r.y, r.w, 1); ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1); ctx.fillRect(r.x, r.y, 1, r.h); ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
       drawText(ctx, 'REFRESH', r.x + r.w / 2, r.y + 4, this.hover ? PAL.c : '#b8c4f0', 1, 'center');
+      if (this.canEdit) drawButton(this.playersRect(), 'PLAYERS', this.hoverP);
+    },
+  };
+
+  function drawButton(r, label, sel) {
+    ctx.fillStyle = sel ? 'rgba(60,188,252,0.25)' : 'rgba(8,6,28,0.8)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = sel ? PAL.c : '#342468';
+    ctx.fillRect(r.x, r.y, r.w, 1); ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1); ctx.fillRect(r.x, r.y, 1, r.h); ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
+    drawText(ctx, label, r.x + r.w / 2, r.y + 4, sel ? PAL.c : '#b8c4f0', 1, 'center');
+  }
+
+  // Players (dev only, from Dev Notes): every account, when it joined and last
+  // logged in, and how far its cloud save has got. The server never has passwords.
+  const Players = {
+    enter() {
+      this.list = null; this.scroll = 0; this.status = 'LOADING...';
+      Account.players().then((l) => { this.list = l; this.status = ''; }, (e) => { this.status = e.message; });
+    },
+    update() {
+      titleUpdate();
+      if (hit(...K.back) || Input.mouse.click) { Sound.sfx('select'); setScene(DevNotes); return; }
+      const n = this.list ? this.list.length : 0;
+      if (hit(...K.down)) this.scroll = Math.min(this.scroll + 1, Math.max(0, n - 14));
+      if (hit(...K.up)) this.scroll = Math.max(0, this.scroll - 1);
+    },
+    progress(pl) {
+      if (pl.done) return 'FINISHED!';
+      if (pl.stage < 0) return pl.savedAt ? '-' : 'NO CLOUD SAVE';
+      const def = CAMPAIGN[Math.min(pl.stage, CAMPAIGN.length - 1)];
+      return 'STAGE ' + def.name.split(' ')[0];
+    },
+    draw() {
+      drawTitleBackdrop();
+      panel(W / 2 - 220, 8, 440, 254, PAL.y);
+      drawTextOutlined(ctx, 'PLAYERS', W / 2, 16, PAL.y, 2, 'center');
+      const date = (t) => (t ? new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() : '-');
+      if (!this.list) { drawText(ctx, this.status, W / 2, 120, PAL.m, 1, 'center'); return; }
+      drawText(ctx, this.list.length + ' ACCOUNTS (NO PASSWORDS ARE EVER STORED)', W / 2, 36, PAL.m, 1, 'center');
+      const cols = [W / 2 - 208, W / 2 - 128, W / 2 - 76, W / 2 + 6, W / 2 + 118];
+      ['NAME', 'JOINED', 'LAST LOGIN', 'PROGRESS', 'ONLY UP'].forEach((h, i) => drawText(ctx, h, cols[i], 52, PAL.c));
+      this.list.slice(this.scroll, this.scroll + 14).forEach((pl, i) => {
+        const y = 66 + i * 12;
+        drawText(ctx, pl.name, cols[0], y, pl.name === 'COLDZEEYT' ? PAL.y : PAL.w);
+        drawText(ctx, date(pl.created), cols[1], y, PAL.l);
+        drawText(ctx, date(pl.lastLogin), cols[2], y, PAL.l);
+        drawText(ctx, this.progress(pl), cols[3], y, pl.done ? PAL.G : PAL.w);
+        drawText(ctx, pl.onlyUp ? pl.onlyUp + 'M' : '-', cols[4], y, PAL.C);
+      });
+      if (this.list.length > 14) drawText(ctx, 'UP/DOWN: SCROLL', W / 2 - 208, 244, PAL.n);
+      drawText(ctx, 'ESC: BACK', W / 2 + 208, 244, PAL.n, 1, 'right');
     },
   };
 
@@ -1828,7 +1883,8 @@
         drawText(ctx, (sel ? '> ' : '') + labels[r] + (sel ? ' <' : ''), W / 2, y, sel ? PAL.c : '#b8c4f0', 1, 'center');
       });
       if (this.msg) drawText(ctx, this.msg, W / 2, 222, this.msgColor, 1, 'center');
-      drawText(ctx, 'ESC: BACK', W / 2, 236, PAL.n, 1, 'center');
+      drawText(ctx, 'ESC: BACK', W / 2, 233, PAL.n, 1, 'center');
+      drawText(ctx, 'YOUR ACCOUNT STORES YOUR NAME AND SAVES. PASSWORDS ARE SCRAMBLED.', W / 2, 242, '#3c3c5c', 1, 'center');
     },
   };
 
@@ -3687,7 +3743,7 @@
   });
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Players, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

@@ -766,13 +766,13 @@ LEVELS.onlyup = {
         y -= count * 2; w = Math.max(3, w);
       } else if (roll < 0.30 && y > 30 && d > 0.15) {
         // a spring to a high ledge
-        // the landing ledge sits beside the spring's column, never above it
+        // the landing is a wide wooden platform beside the spring: you fly up through it and land on top
         const sx = dir > 0 ? x + w - 1 : x;
-        const nx = dir > 0 ? sx + 1 : sx - 3;
-        if (nx < 1 || nx + 3 > Wd - 1) { dir = -dir; continue; }
+        const nx = dir > 0 ? sx + 1 : sx - 5;
+        if (nx < 1 || nx + 5 > Wd - 1) { dir = -dir; continue; }
         b.spring(sx, at(y - 1));
-        y -= 7; x = nx; w = 3;
-        ledge(x, y, w, 'plat');
+        y -= 7; x = nx; w = 5;
+        b.thru(x, at(y), w);
       } else if (roll < 0.36 && y > 30 && d > 0.3) {
         // dash up: a crystal in the air on the way to a ledge far above
         // (the target is a wooden platform, so you can dash up through it)

@@ -114,6 +114,7 @@ async function handle(req, res) {
       }
     }
     const token = newToken(acc);
+    acc.lastLogin = Date.now();
     persist();
     return send(res, 200, { user, token, savedAt: acc.savedAt });
   }
@@ -140,6 +141,24 @@ async function handle(req, res) {
     who.acc.savedAt = Date.now();
     persist();
     return send(res, 200, { ok: true, savedAt: who.acc.savedAt });
+  }
+  // Players list for the dev: names, dates and how far each save has got. Never passwords.
+  if (route === 'GET /api/players') {
+    if (who.name !== DEV_USER) return send(res, 403, { error: 'DEV ONLY' });
+    const players = Object.keys(db.accounts).map((name) => {
+      const a = db.accounts[name];
+      let stage = -1, done = false, onlyUp = 0;
+      for (const [k, v] of Object.entries(a.save || {})) {
+        try {
+          const d = JSON.parse(v);
+          if (/^precipice\.(slot\d|hardcore)$/.test(k) && d && typeof d.stage === 'number') { stage = Math.max(stage, d.stage); done = done || !!d.done; }
+          if (k === 'precipice.onlyup' && d) onlyUp = Math.max(onlyUp, d.best || 0);
+        } catch (e) { /* not JSON */ }
+      }
+      return { name, created: a.created || 0, lastLogin: a.lastLogin || 0, savedAt: a.savedAt || 0, stage, done, onlyUp };
+    });
+    players.sort((x, y) => Math.max(y.lastLogin, y.savedAt) - Math.max(x.lastLogin, x.savedAt));
+    return send(res, 200, { players });
   }
   if (route === 'PUT /api/devnotes') {
     if (who.name !== DEV_USER) return send(res, 403, { error: 'ONLY THE DEV CAN WRITE NOTES' });

@@ -78,6 +78,7 @@ const Account = {
   // Dev notes: everyone can read them; only the developer's account can write (the server checks too).
   isDev() { return this.loggedIn() && this.user === 'COLDZEEYT'; },
   async loadNotes() { return this.call('GET', '/api/devnotes'); },
+  async players() { return (await this.call('GET', '/api/players')).players || []; },
   async saveNotes(text) { return this.call('PUT', '/api/devnotes', { text }); },
   // Replaces this device's saves with the cloud copy. Returns false if the cloud is empty.
   async pull() {
