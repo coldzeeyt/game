@@ -35,6 +35,12 @@ publishes them as the latest release:
 The title screen shows **Download for PC** (desktop browsers) or **Download for Android**
 (Android browsers).
 
+### Versions
+
+The game's version (e.g. **1.8**) is `GAME_VERSION` in `js/config.js`. It shows on the title screen,
+and each GitHub release is named after it ("Precipice 1.8"). When you ship a new update, bump it and
+add a matching page at the top of the changelog (`CHANGELOG` in `js/game.js`).
+
 ### Automatic updates (Windows)
 
 Precipice.exe updates itself. Every push to `main` builds a new release (`build-N`), and each exe

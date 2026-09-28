@@ -3397,7 +3397,7 @@
     scene.draw();
     if (UpdateBox.active()) UpdateBox.draw();
     else if (laterT > 0 && scene !== Play) drawTextOutlined(ctx, 'UPDATE WILL INSTALL WHEN YOU CLOSE THE GAME', W / 2, 6, PAL.y, 1, 'center');
-    else if (scene === Title && UpdateBox.statusText()) drawTextOutlined(ctx, UpdateBox.statusText(), 6, H - 34, UpdateBox.st.state === 'error' ? '#fc7460' : '#8c9cd8');
+    else if (scene === Title && UpdateBox.uiShown()) drawTextOutlined(ctx, UpdateBox.statusText(), 6, H - 34, UpdateBox.st && UpdateBox.st.state === 'error' ? '#fc7460' : '#8c9cd8');
     if (fade > 0) {
       ctx.fillStyle = 'rgba(0,0,0,' + fade / FADE + ')';
       ctx.fillRect(0, 0, W, H);
@@ -3418,6 +3418,7 @@
   const UpdateBox = {
     build: 0, shown: false, done: false, index: 0, t: 0, st: null,
     ready(build) { this.build = build; },
+    uiShown() { return Title.uiA > 0.99; }, // hidden while the Watcher easter egg is showing
     // What the UPDATES row in Settings says.
     settingsText() {
       const s = this.st;
@@ -3425,19 +3426,20 @@
       if (s.state === 'checking') return 'CHECKING...';
       if (s.state === 'downloading') return 'DOWNLOADING ' + s.pct + '%';
       if (s.state === 'ready') return 'READY: INSTALL NOW';
-      if (s.state === 'uptodate') return 'UP TO DATE (BUILD ' + s.build + ')';
+      if (s.state === 'uptodate') return 'UP TO DATE (VERSION ' + GAME_VERSION + ')';
       if (s.state === 'error') return 'FAILED: TRY AGAIN';
       return 'CHECK NOW';
     },
     // Small status line for the title screen: this build, and what the updater is doing.
     statusText() {
       const s = this.st;
-      if (!s || s.state === 'dev' || s.state === 'idle') return '';
-      const me = 'BUILD ' + s.build;
+      const me = 'VERSION ' + GAME_VERSION;
+      if (!s || s.state === 'dev' || s.state === 'idle') return me;
+      const next = s.latestName ? 'VERSION ' + s.latestName : 'THE NEW VERSION';
       if (s.state === 'checking') return me + ' - CHECKING FOR UPDATES...';
       if (s.state === 'uptodate') return me + ' - UP TO DATE';
-      if (s.state === 'downloading') return me + ' - DOWNLOADING BUILD ' + s.latest + ': ' + s.pct + '%';
-      if (s.state === 'ready') return me + ' - BUILD ' + s.latest + ' IS READY';
+      if (s.state === 'downloading') return me + ' - DOWNLOADING ' + next + ': ' + s.pct + '%';
+      if (s.state === 'ready') return me + ' - ' + next + ' IS READY';
       if (s.state === 'error') return me + ' - UPDATE CHECK FAILED: ' + (s.msg || '');
       return me;
     },

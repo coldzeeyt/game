@@ -1,5 +1,6 @@
 # Builds the game's apps on every push to main and publishes them as the
-# latest GitHub Release:
+# latest GitHub Release, named after GAME_VERSION in js/config.js (the tag stays
+# build-N, which the Windows app's updater uses):
 #   Precipice.exe          - Windows, one portable file (everything packed inside)
 #   Precipice-Android.apk  - Android
 # Download links used by the game's title screen:
@@ -24,10 +25,13 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      # Stamp the build number into the app (1.0.N) so Precipice.exe can tell
+      # Stamp the version + build number into the app (e.g. 1.8.24) so Precipice.exe can tell
       # when a newer release (build-N) is out and update itself.
       - name: Set version
-        run: npm version 1.0.${{ github.run_number }} --no-git-tag-version --allow-same-version
+        shell: bash
+        run: |
+          V=$(node -e "console.log(/GAME_VERSION = '([^']+)'/.exec(require('fs').readFileSync('js/config.js','utf8'))[1])")
+          npm version "$V.${{ github.run_number }}" --no-git-tag-version --allow-same-version
       - name: Build portable Precipice.exe
         run: npx electron-builder --win portable --x64 --publish never
       - uses: actions/upload-artifact@v4
@@ -89,6 +93,10 @@ jobs:
     needs: [windows, android]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Read the game version
+        id: ver
+        run: echo "v=$(node -e "console.log(/GAME_VERSION = '([^']+)'/.exec(require('fs').readFileSync('js/config.js','utf8'))[1])")" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           path: out
@@ -96,7 +104,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Precipice (build ${{ github.run_number }})
+          name: Precipice ${{ steps.ver.outputs.v }}
           body: |
             **Windows:** download `Precipice.exe` and run it. Everything is packed inside.
             **Android:** download `Precipice-Android.apk` and open it to install.

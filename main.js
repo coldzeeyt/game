@@ -80,6 +80,8 @@ async function checkForUpdate() {
   if (!res.ok) throw new Error('GITHUB SAID ' + res.status);
   const rel = await res.json();
   const latest = buildOf(rel.tag_name); // build-N -> N
+  const vm = /(\d+\.\d+)/.exec(rel.name || ''); // release name "Precipice 1.9" -> 1.9
+  const latestName = vm ? vm[1] : '';
   if (!(latest > current)) return setState({ state: 'uptodate' });
   const asset = (rel.assets || []).find((a) => a.name === 'Precipice.exe');
   if (!asset) throw new Error('NO EXE IN BUILD ' + latest);
@@ -89,7 +91,7 @@ async function checkForUpdate() {
   const have = fs.existsSync(target) && (!asset.size || fs.statSync(target).size === asset.size);
   if (!have) {
     const part = target + '.part';
-    setState({ state: 'downloading', latest, pct: 0 });
+    setState({ state: 'downloading', latest, latestName, pct: 0 });
     const dl = await net.fetch(asset.browser_download_url, { headers: { 'User-Agent': 'Precipice' } });
     if (!dl.ok || !dl.body) throw new Error('DOWNLOAD FAILED ' + dl.status);
     let got = 0, shown = -1;
@@ -97,7 +99,7 @@ async function checkForUpdate() {
       transform(chunk, _enc, done) {
         got += chunk.length;
         const pct = asset.size ? Math.floor((got * 100) / asset.size) : 0;
-        if (pct !== shown) { shown = pct; setState({ state: 'downloading', latest, pct }); }
+        if (pct !== shown) { shown = pct; setState({ state: 'downloading', latest, latestName, pct }); }
         done(null, chunk);
       },
     });
@@ -107,7 +109,7 @@ async function checkForUpdate() {
   }
   pendingUpdate = target;
   // The game shows its own 8-bit "UPDATE READY" box (see preload.js / game.js).
-  setState({ state: 'ready', latest });
+  setState({ state: 'ready', latest, latestName });
 }
 
 // Swap the new exe in once this one has exited, using a tiny throwaway script.
