@@ -1,11 +1,11 @@
-// Bridge between the desktop app and the game page: lets the game show its own
-// "update ready" box and ask the app to restart into the new version.
+// Bridge between the desktop app and the game page: lets the game show the
+// updater's progress, its own "update ready" box, and restart into the new version.
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('precipiceApp', {
-  onUpdateReady(cb) {
-    ipcRenderer.on('update-ready', (_e, build) => cb(build));
-    ipcRenderer.invoke('update-status').then((build) => { if (build) cb(build); });
+  onUpdateState(cb) {
+    ipcRenderer.on('update-state', (_e, st) => cb(st));
+    ipcRenderer.invoke('update-state').then(cb);
   },
   restartNow() { ipcRenderer.send('update-restart'); },
 });

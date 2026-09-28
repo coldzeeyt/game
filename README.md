@@ -162,7 +162,7 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Load Game**: pick any of the 3 save slots
 - **Tutorial**: teaches every mechanic
 - **Guide**: your goal, the collectables, everything on the mountain, and the controls
-- **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you
+- **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you; plus Wren, the Black Flame and what came after (these pages unlock as you reach that part of the story)
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*,
   and key bindings (Controls)

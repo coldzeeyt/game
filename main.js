@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
-const { Readable } = require('stream');
+const { Readable, Transform } = require('stream');
 const { pipeline } = require('stream/promises');
 
 // Let the title music start without waiting for a click.
@@ -51,37 +51,58 @@ const buildOf = (s) => {
   return m ? Number(m[1]) : 0;
 };
 
+// What the updater is doing, shown small on the title screen and written to
+// update-log.txt (in %APPDATA%\Precipice) so problems can be tracked down.
+let state = { state: 'idle', build: 0 };
+function setState(next) {
+  state = Object.assign({ build: buildOf(app.getVersion()) }, next);
+  if (win && !win.isDestroyed()) win.webContents.send('update-state', state);
+  if (next.state !== 'downloading') log(JSON.stringify(state));
+}
+function log(line) {
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'update-log.txt'), new Date().toISOString() + ' ' + line + '\r\n'); } catch (e) { /* ignore */ }
+}
+ipcMain.handle('update-state', () => state); // for a page that loaded after a change
+ipcMain.on('update-restart', () => installUpdate(true));
+
 async function checkForUpdate() {
-  if (process.platform !== 'win32' || !EXE) return;
+  if (process.platform !== 'win32' || !EXE) return setState({ state: 'dev' });
   fs.rmSync(EXE + '.update', { force: true }); // leftover from older versions of this updater
   const current = buildOf(app.getVersion()); // 1.0.N -> N
+  setState({ state: 'checking' });
   const res = await net.fetch(RELEASES, { headers: { 'User-Agent': 'Precipice', Accept: 'application/vnd.github+json' } });
-  if (!res.ok) return;
+  if (!res.ok) throw new Error('GITHUB SAID ' + res.status);
   const rel = await res.json();
   const latest = buildOf(rel.tag_name); // build-N -> N
-  if (!(latest > current)) return;
+  if (!(latest > current)) return setState({ state: 'uptodate' });
   const asset = (rel.assets || []).find((a) => a.name === 'Precipice.exe');
-  if (!asset) return;
+  if (!asset) throw new Error('NO EXE IN BUILD ' + latest);
 
   // Download to the temp folder (skipped if this build is already waiting there).
   const target = path.join(app.getPath('temp'), `Precipice-build-${latest}.exe`);
   const have = fs.existsSync(target) && (!asset.size || fs.statSync(target).size === asset.size);
   if (!have) {
     const part = target + '.part';
+    setState({ state: 'downloading', latest, pct: 0 });
     const dl = await net.fetch(asset.browser_download_url, { headers: { 'User-Agent': 'Precipice' } });
-    if (!dl.ok || !dl.body) return;
-    await pipeline(Readable.fromWeb(dl.body), fs.createWriteStream(part));
-    if (asset.size && fs.statSync(part).size !== asset.size) { fs.rmSync(part, { force: true }); return; }
+    if (!dl.ok || !dl.body) throw new Error('DOWNLOAD FAILED ' + dl.status);
+    let got = 0, shown = -1;
+    const count = new Transform({
+      transform(chunk, _enc, done) {
+        got += chunk.length;
+        const pct = asset.size ? Math.floor((got * 100) / asset.size) : 0;
+        if (pct !== shown) { shown = pct; setState({ state: 'downloading', latest, pct }); }
+        done(null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(dl.body), count, fs.createWriteStream(part));
+    if (asset.size && fs.statSync(part).size !== asset.size) { fs.rmSync(part, { force: true }); throw new Error('DOWNLOAD WAS INCOMPLETE'); }
     fs.renameSync(part, target);
   }
   pendingUpdate = target;
-  updateBuild = latest;
   // The game shows its own 8-bit "UPDATE READY" box (see preload.js / game.js).
-  if (win && !win.isDestroyed()) win.webContents.send('update-ready', latest);
+  setState({ state: 'ready', latest });
 }
-let updateBuild = 0;
-ipcMain.handle('update-status', () => (pendingUpdate ? updateBuild : 0)); // for a page that loaded after the download
-ipcMain.on('update-restart', () => installUpdate(true));
 
 // Swap the new exe in once this one has exited, using a tiny throwaway script.
 function installUpdate(relaunch) {
@@ -102,6 +123,7 @@ function installUpdate(relaunch) {
     '(goto) 2>nul & del "%~f0"',
     '',
   ].join('\r\n'));
+  log('installing ' + pendingUpdate + ' -> ' + EXE + (relaunch ? ' (restart)' : ' (on close)'));
   spawn('cmd.exe', ['/c', script], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   pendingUpdate = null;
   if (relaunch) app.quit();
@@ -109,7 +131,8 @@ function installUpdate(relaunch) {
 
 app.whenReady().then(() => {
   createWindow();
-  checkForUpdate().catch(() => { /* offline, or GitHub unreachable: try again next launch */ });
+  // offline, or GitHub unreachable: say so, and try again next launch
+  checkForUpdate().catch((e) => setState({ state: 'error', msg: String((e && e.message) || e).toUpperCase().slice(0, 40) }));
 });
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => installUpdate(false));

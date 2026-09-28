@@ -665,7 +665,13 @@
     gate: (x, y) => { Play.drawGateTile(x - 8, y - 8, true, true); },
     orb: (x, y) => Play.drawOrb(x, y),
     blocks: (x, y) => { Play.drawSwitchBlock(x - 16, y - 8, 'B', true); Play.drawSwitchBlock(x, y - 8, 'B', false); },
-    vent: (x, y) => { Play.drawVent({ x: (x - 8) / T, y: (y + 8) / T, phase: 60 }); },
+    // cycles cool -> smoke -> fire so the icon shows what a vent does
+    vent: (x, y) => {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x - 12, y - 12, 24, 23); ctx.clip(); // keep the flames inside the icon's space
+      Play.drawVent({ x: (x - 8) / T, y: (y + 10) / T, phase: ((60 + (frame % 140)) - (Play.hz || 0) % 200 + 400) % 200 });
+      ctx.restore();
+    },
     ladder: (x, y) => ctx.drawImage(TILES.ladder, x - 8, y - 8),
     thru: (x, y) => { Play.drawThru(x - 16, y - 3, true, false); Play.drawThru(x, y - 3, false, true); },
     wind: (x, y) => {
@@ -731,6 +737,22 @@
     } },
   ];
 
+  // How far any save has got (Infinity = the game has been finished).
+  function storyReached(stage) {
+    for (let i = 0; i <= Slots.HARDCORE; i++) {
+      const d = Slots.load(i);
+      if (d && (d.done || (stage !== Infinity && d.stage >= stage))) return true;
+    }
+    return false;
+  }
+  // A lore page that shows as ??? until the story gets there.
+  function secretPage(title, unlocked, text) {
+    return {
+      title: () => (unlocked() ? title : '???'),
+      text: () => (unlocked() ? text : ['THIS PAGE OF THE STORY IS STILL HIDDEN.', '', 'KEEP CLIMBING...']),
+    };
+  }
+
   const LORE = [
     { title: 'MOUNT PRECIPICE', text: [
       'MOUNT PRECIPICE RISES ABOVE THE CLOUDS, SO TALL',
@@ -780,6 +802,41 @@
       "FIND ASH'S MEMORY FRAGMENTS, AND LEARN WHAT THE",
       'WATCHER WANTS BEFORE YOU REACH THE TOP.',
     ] },
+    // Wren's pages give away the endings, so they stay hidden until a save gets there.
+    secretPage('WREN, THE FIRST CLIMBER', () => storyReached(ACT2_START), [
+      'LONG BEFORE ASH, BEFORE THE VALLEY HAD A NAME,',
+      'A CLIMBER CALLED WREN REACHED THE EVERFLAME FIRST.',
+      '',
+      'WREN FEARED ONE THING ABOVE ALL: BEING FORGOTTEN.',
+      'SO WREN WISHED NEVER TO BE FORGOTTEN.',
+      '',
+      'THE FLAME GRANTED IT IN THE CRUELLEST WAY. WREN',
+      'BURNED BLACK AND HOLLOW, AND THE MOUNTAIN BEGAN TO',
+      'KEEP EVERY CLIMBER WHO CAME, SO THAT SOMEONE WOULD',
+      'ALWAYS BE THERE TO REMEMBER.',
+    ]),
+    secretPage('THE BLACK FLAME', () => storyReached(ACT2_START), [
+      'ON THE FAR SIDE OF THE SUMMIT BURNS A SECOND FIRE,',
+      "BLACK AND COLD. IT IS WHAT WREN'S WISH BECAME.",
+      '',
+      'EVERY CLIMBER WHO WISHED FOR THEMSELVES WAS PULLED',
+      'INTO IT, AND CAME OUT AS A SHADOW: A WATCHER.',
+      '',
+      'AT ITS HEART SITS THE HOLLOW: WREN, A THOUSAND',
+      'YEARS LATER, WITH NO NAME LEFT, GUARDING THE ONE',
+      'THING IT STILL HAS. ONLY A GIFT, GIVEN FREELY AND',
+      'NOT TAKEN, CAN PUT IT OUT.',
+    ]),
+    secretPage('REMEMBERED', () => storyReached(Infinity), [
+      'THE BLACK FLAME IS OUT. THE LOST CLIMBERS WALKED',
+      'DOWN THE MOUNTAIN AS LIGHT, AND WREN WENT WITH THEM.',
+      '',
+      'FOR THE FIRST TIME IN A THOUSAND YEARS, WREN IS',
+      'REMEMBERED: NOT BECAUSE OF A WISH, BUT BECAUSE',
+      'SOMEONE CLIMBED ALL THAT WAY TO BRING WREN HOME.',
+      '',
+      '"MY NAME WAS WREN. THANK YOU FOR BRINGING ME HOME."',
+    ]),
   ];
 
   // A flip-through book of pages (used by GUIDE and LORE).
@@ -801,18 +858,19 @@
         drawTitleBackdrop();
         const page = pages[this.page];
         panel(W / 2 - 190, 20, 380, 232);
-        drawTextOutlined(ctx, page.title, W / 2, 32, PAL.C, 2, 'center');
+        drawTextOutlined(ctx, typeof page.title === 'function' ? page.title() : page.title, W / 2, 32, PAL.C, 2, 'center');
         const text = typeof page.text === 'function' ? page.text() : page.text;
         if (text) {
           text.forEach((l, i) => drawText(ctx, l, W / 2 - 170, 62 + i * 13, PAL.w));
         } else {
+          // each entry takes the room its text needs, so two-line entries never overlap
           let y = 62;
-          const gap = page.items.length > 3 ? 27 : 44;
+          const pad = page.items.length > 5 ? 6 : page.items.length > 3 ? 10 : 20;
           for (const [icon, head, ...lines] of page.items) {
-            ICONS[icon](W / 2 - 156, y + 6 + (lines.length > 2 ? 8 : 0));
+            ICONS[icon](W / 2 - 156, y + 4 + lines.length * 5);
             drawText(ctx, head, W / 2 - 132, y, PAL.c);
             lines.forEach((l, i) => drawText(ctx, l, W / 2 - 132, y + 11 + i * 10, PAL.w));
-            y += gap + Math.max(0, lines.length - 2) * 10;
+            y += 11 + lines.length * 10 + pad;
           }
         }
         const n = pages.length;
@@ -969,6 +1027,9 @@
       '  MORE STORYLINES ARE COMING',
       '- THE WINDOWS APP NOW UPDATES ITSELF',
       '- NEW APP ICON: ASH IN THE RED CAP',
+      '- LORE: THREE NEW PAGES ABOUT WREN (NO SPOILERS:',
+      '  THEY UNLOCK AS YOU PLAY)',
+      '- FIXED THE PUZZLES AND HAZARDS GUIDE PAGES',
       '- QUOTATION MARKS SHOW UP IN THE STORY TEXT',
     ] },
     { title: 'UPDATE 1.7', text: [
@@ -3291,6 +3352,7 @@
     scene.draw();
     if (UpdateBox.active()) UpdateBox.draw();
     else if (laterT > 0 && scene !== Play) drawTextOutlined(ctx, 'UPDATE WILL INSTALL WHEN YOU CLOSE THE GAME', W / 2, 6, PAL.y, 1, 'center');
+    else if (scene === Title && UpdateBox.statusText()) drawTextOutlined(ctx, UpdateBox.statusText(), 6, H - 34, UpdateBox.st.state === 'error' ? '#fc7460' : '#8c9cd8');
     if (fade > 0) {
       ctx.fillStyle = 'rgba(0,0,0,' + fade / FADE + ')';
       ctx.fillRect(0, 0, W, H);
@@ -3309,8 +3371,20 @@
   // When the Windows app has downloaded a new version, show an 8-bit box over
   // the menus (never mid-level): RESTART NOW or LATER (installs on close).
   const UpdateBox = {
-    build: 0, shown: false, done: false, index: 0, t: 0,
+    build: 0, shown: false, done: false, index: 0, t: 0, st: null,
     ready(build) { this.build = build; },
+    // Small status line for the title screen: this build, and what the updater is doing.
+    statusText() {
+      const s = this.st;
+      if (!s || s.state === 'dev' || s.state === 'idle') return '';
+      const me = 'BUILD ' + s.build;
+      if (s.state === 'checking') return me + ' - CHECKING FOR UPDATES...';
+      if (s.state === 'uptodate') return me + ' - UP TO DATE';
+      if (s.state === 'downloading') return me + ' - DOWNLOADING BUILD ' + s.latest + ': ' + s.pct + '%';
+      if (s.state === 'ready') return me + ' - BUILD ' + s.latest + ' IS READY';
+      if (s.state === 'error') return me + ' - UPDATE CHECK FAILED: ' + (s.msg || '');
+      return me;
+    },
     active() { return this.build && !this.done && scene !== Play; },
     rects() { return [{ x: W / 2 - 96, y: 158, w: 88, h: 16 }, { x: W / 2 + 8, y: 158, w: 88, h: 16 }]; },
     update() {
@@ -3352,7 +3426,11 @@
   };
   let laterT = 0; // "installs when you close the game" note after picking LATER
   function toastLater() { laterT = 180; }
-  if (window.precipiceApp) window.precipiceApp.onUpdateReady((build) => UpdateBox.ready(build));
+  if (window.precipiceApp) window.precipiceApp.onUpdateState((st) => {
+    if (!st) return;
+    UpdateBox.st = st;
+    if (st.state === 'ready') UpdateBox.ready(st.latest);
+  });
 
   // Debug hooks for automated testing / screenshots.
   window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
