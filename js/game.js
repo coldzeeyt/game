@@ -1359,7 +1359,7 @@
       '- ONLY UP (IN MORE): ONE HUGE TOWER, NO',
       '  CHECKPOINTS. HOW HIGH CAN YOU GET?',
       '- DEV NOTES (TOP LEFT): NEWS FROM ColdzeeYT',
-      '- MESSAGE THE DEV: ACCOUNT > MESSAGE COLDZEEYT',
+      '- MESSAGES: TALK TO THE DEV IN ACCOUNT > MESSAGES',
       '- CHECK FOR UPDATES IN SETTINGS (WINDOWS APP)',
       '- THE UPDATE POPUP IS IN THE GAME\'S OWN STYLE',
       '- THE VERSION NUMBER SHOWS ON THE TITLE SCREEN',
@@ -2012,7 +2012,7 @@
         user: 'NAME: ' + this.user + (this.editing === 'user' ? caret : this.user ? '' : '...'),
         pass: 'PASSWORD: ' + '*'.repeat(this.pass.length) + (this.editing === 'pass' ? caret : this.pass ? '' : '...'),
         login: 'LOG IN', signup: 'SIGN UP', save: 'SAVE',
-        messages: (Account.isDev() ? 'MESSAGES' : 'MESSAGE ' + Account.DEV) + (Account.unread ? ' (' + Account.unread + ' NEW)' : ''), load: this.confirmLoad ? 'LOAD - SURE?' : 'LOAD', logout: 'LOG OUT', back: 'BACK',
+        messages: 'MESSAGES' + (Account.unread ? ' (' + Account.unread + ' NEW)' : ''), load: this.confirmLoad ? 'LOAD - SURE?' : 'LOAD', logout: 'LOG OUT', back: 'BACK',
       };
       this.rows().forEach((r, i) => {
         const y = 104 + i * 22, sel = i === this.index;
