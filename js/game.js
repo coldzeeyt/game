@@ -406,9 +406,14 @@
   const DOWNLOAD_URL = 'https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice.exe';
   const ANDROID_URL = 'https://github.com/coldzeeyt/precipice/releases/latest/download/Precipice-Android.apk';
 
+  // Leave the title screen alone for 10 minutes and the Watcher gets impatient.
+  const IDLE_FRAMES = 60 * 60 * 10;
   const Title = {
+    idleT: 0, uiA: 1, // frames without input; how visible the menus are (fades to 0 when idle)
     enter() {
       Sound.ensureTitle();
+      this.idleT = 0;
+      this.uiA = 1;
       this.cont = Slots.latest();
       const items = [];
       if (this.cont >= 0) items.push({ id: 'continue', label: 'CONTINUE' });
@@ -450,6 +455,15 @@
     },
     update() {
       titleUpdate();
+      // idle easter egg: any key or mouse movement brings the menus back
+      const woke = Input.any || Input.mouse.moved || Input.mouse.click;
+      if (woke) this.idleT = 0; else this.idleT++;
+      const target = this.idleT >= IDLE_FRAMES ? 0 : 1;
+      this.uiA = target < this.uiA ? Math.max(0, this.uiA - 1 / 120) : Math.min(1, this.uiA + 1 / 30);
+      if (this.uiA < 1) return; // (the input that woke it up only wakes it up)
+      this.titleInput();
+    },
+    titleInput() {
       const m = Input.mouse;
       if (m.moved || m.click) {
         const over = this.cornerRects().findIndex((r) => overlap({ x: m.x, y: m.y, w: 1, h: 1 }, r));
@@ -489,6 +503,7 @@
     draw() {
       drawTitleBackdrop();
       drawLogo();
+      ctx.globalAlpha = this.uiA;
       const top = this.menu.y - 8, h = this.menu.items.length * this.menu.spacing + 10;
       ctx.fillStyle = 'rgba(8,6,28,0.6)';
       ctx.fillRect(W / 2 - 64, top, 128, h);
@@ -508,6 +523,23 @@
         ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
         drawText(ctx, labels[i], r.x + r.w / 2, r.y + 5, sel ? PAL.c : '#b8c4f0', 1, 'center');
       });
+      ctx.globalAlpha = 1;
+      if (this.uiA < 1) this.drawWatcherTalk(1 - this.uiA);
+    },
+    // The Watcher steps out of the rain: "YOU REALLY CAN'T CHOOSE?"
+    drawWatcherTalk(a) {
+      ctx.globalAlpha = a;
+      ctx.drawImage(WATCHER_SPR.left, 392, 186);
+      const text = "YOU REALLY CAN'T CHOOSE?";
+      const tw = textWidth(text), bx = 386 - tw, by = 150, bw = tw + 16, bh = 20;
+      ctx.fillStyle = '#08061c'; ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = '#881400';
+      ctx.fillRect(bx, by, bw, 1); ctx.fillRect(bx, by + bh - 1, bw, 1); ctx.fillRect(bx, by, 1, bh); ctx.fillRect(bx + bw - 1, by, 1, bh);
+      // tail down to the Watcher
+      for (let i = 0; i < 6; i++) { ctx.fillStyle = '#08061c'; ctx.fillRect(bx + bw - 12 + i, by + bh - 1 + i, 6 - i, 1); ctx.fillStyle = '#881400'; ctx.fillRect(bx + bw - 12 + i, by + bh - 1 + i, 1, 1); ctx.fillRect(bx + bw - 7, by + bh - 1 + i, 1, 1); }
+      const shown = Math.floor(Math.max(0, a * 1.6 - 0.6) * text.length); // types out once the menus are gone
+      drawText(ctx, text.slice(0, shown), bx + 8, by + 7, '#fcbcb0');
+      ctx.globalAlpha = 1;
     },
   };
 
@@ -1030,6 +1062,7 @@
       '- LORE: THREE NEW PAGES ABOUT WREN (NO SPOILERS:',
       '  THEY UNLOCK AS YOU PLAY)',
       '- FIXED THE PUZZLES AND HAZARDS GUIDE PAGES',
+      '- ??? (TRY WAITING ON THE TITLE SCREEN)',
       '- QUOTATION MARKS SHOW UP IN THE STORY TEXT',
     ] },
     { title: 'UPDATE 1.7', text: [
