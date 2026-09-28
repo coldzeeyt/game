@@ -45,12 +45,13 @@
   let lastSize = '';
 
   // ---------------------------------------------------------------- input
-  const Input = { down: new Set(), pressed: new Set(), any: false, mouse: { x: -1, y: -1, click: false, moved: false } };
+  const Input = { down: new Set(), pressed: new Set(), typed: [], any: false, mouse: { x: -1, y: -1, click: false, moved: false } };
   const NO_SCROLL = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   addEventListener('keydown', (e) => {
     if (NO_SCROLL.has(e.code)) e.preventDefault();
     Sound.init();
     if (!e.repeat) Input.pressed.add(e.code);
+    if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey) Input.typed.push(e.key); // actual characters, for typing text
     Input.down.add(e.code);
     Input.any = true;
   });
@@ -439,9 +440,11 @@
     cornerRects() {
       const a = this.cornerLabels();
       const wa = textWidth(a[0]) + 16, wb = textWidth(a[1]) + 16, wc = textWidth(a[2]) + 16;
-      return [{ x: 6, y: H - 22, w: wa, h: 16 }, { x: W - 6 - wb, y: H - 22, w: wb, h: 16 }, { x: W / 2 - wc / 2, y: 14, w: wc, h: 16 }];
+      const r = [{ x: 6, y: H - 22, w: wa, h: 16 }, { x: W - 6 - wb, y: H - 22, w: wb, h: 16 }, { x: W / 2 - wc / 2, y: 14, w: wc, h: 16 }];
+      r.push({ x: 6, y: 14, w: textWidth(a[3]) + 16, h: 16 }); // DEV NOTES (top left)
+      return r;
     },
-    cornerLabels() { return [Account.loggedIn() ? 'ACCOUNT: ' + Account.user : 'ACCOUNT', 'MORE', 'STORIES']; },
+    cornerLabels() { return [Account.loggedIn() ? 'ACCOUNT: ' + Account.user : 'ACCOUNT', 'MORE', 'STORIES', 'DEV NOTES']; },
     setCorner(c) {
       if (c === this.corner) return;
       if (this.corner < 0) this.menuIndex = this.menu.index;
@@ -451,7 +454,7 @@
     },
     pickCorner() {
       Sound.sfx('select');
-      setScene([AccountScene, More, Stories][this.corner]);
+      setScene([AccountScene, More, Stories, DevNotes][this.corner]);
     },
     update() {
       titleUpdate();
@@ -474,14 +477,17 @@
           this.setCorner(-1);
         }
       }
-      if (hit(...K.left)) this.setCorner(0);
-      else if (hit(...K.right)) this.setCorner(1);
-      else if (this.corner < 0 && this.menu.index === 0 && hit(...K.up)) { this.setCorner(2); return; }
-      if (this.corner === 2) {
+      if (this.corner >= 2) {
+        // top row: STORIES, and DEV NOTES to its left
         if (hit(...K.down)) { this.menuIndex = 0; this.setCorner(-1); }
+        else if (hit(...K.left) && this.corner === 2) this.setCorner(3);
+        else if (hit(...K.right) && this.corner === 3) this.setCorner(2);
         else if (hit(...K.ok)) this.pickCorner();
         return;
       }
+      if (hit(...K.left)) this.setCorner(0);
+      else if (hit(...K.right)) this.setCorner(1);
+      else if (this.corner < 0 && this.menu.index === 0 && hit(...K.up)) { this.setCorner(2); return; }
       if (this.corner >= 0) {
         if (hit(...K.up, ...K.down)) this.setCorner(-1);
         else if (hit(...K.ok)) this.pickCorner();
@@ -540,6 +546,92 @@
       const shown = Math.floor(Math.max(0, a * 1.6 - 0.6) * text.length); // types out once the menus are gone
       drawText(ctx, text.slice(0, shown), bx + 8, by + 7, '#fcbcb0');
       ctx.globalAlpha = 1;
+    },
+  };
+
+  // ---------------------------------------------------------------- dev notes
+  // Notes from the developer, kept on the account server. Everyone can read
+  // them; only the dev's account (COLDZEEYT) can write, and the server checks.
+  const NOTE_COLS = 58, NOTE_ROWS = 13;
+  function wrapNotes(text) {
+    const out = [];
+    for (const para of text.split('\n')) {
+      let line = '';
+      for (const word of para.split(' ')) {
+        let w = word;
+        while (w.length > NOTE_COLS) { if (line) { out.push(line); line = ''; } out.push(w.slice(0, NOTE_COLS)); w = w.slice(NOTE_COLS); }
+        if ((line ? line.length + 1 : 0) + w.length > NOTE_COLS) { out.push(line); line = w; } else line = line ? line + ' ' + w : w;
+      }
+      out.push(line);
+    }
+    return out;
+  }
+  const DevNotes = {
+    enter() {
+      this.text = ''; this.loaded = false; this.dirty = false; this.saving = false; this.editT = 0; this.scroll = 0; this.t = 0; this.bs = 0;
+      this.canEdit = Account.isDev();
+      this.savedAt = 0;
+      this.status = 'LOADING...';
+      Account.loadNotes().then((n) => {
+        this.text = n.text || ''; this.savedAt = n.savedAt || 0; this.loaded = true; this.status = '';
+        if (!this.canEdit) this.scroll = Math.max(0, wrapNotes(this.text).length - NOTE_ROWS); // readers start at the top
+      }, (e) => { this.status = e.message; });
+    },
+    save() {
+      if (!this.loaded || this.saving) return;
+      this.saving = true; this.dirty = false; this.status = 'SAVING...';
+      Account.saveNotes(this.text).then(() => { this.saving = false; if (!this.dirty) this.status = 'SAVED'; },
+        (e) => { this.saving = false; this.dirty = true; this.status = 'NOT SAVED: ' + e.message; });
+    },
+    edit(text) { this.text = text.slice(0, 20000); this.dirty = true; this.editT = 0; this.scroll = 0; this.status = ''; },
+    update() {
+      titleUpdate();
+      this.t++;
+      if (hit('Escape') || (!this.canEdit && hit('Backspace'))) { if (this.dirty) this.save(); Sound.sfx('select'); setScene(Title); return; }
+      if (!this.loaded) return;
+      const lines = wrapNotes(this.text).length;
+      if (hit(...(this.canEdit ? ['ArrowUp'] : K.up))) this.scroll = Math.min(this.scroll + 1, Math.max(0, lines - NOTE_ROWS));
+      if (hit(...(this.canEdit ? ['ArrowDown'] : K.down))) this.scroll = Math.max(0, this.scroll - 1);
+      if (!this.canEdit) { if (Input.mouse.click) { Sound.sfx('select'); setScene(Title); } return; }
+      // the dev types
+      if (IS_TOUCH && Input.mouse.click) {
+        const add = prompt('ADD A LINE TO THE DEV NOTES');
+        Input.down.clear();
+        if (add) this.edit(this.text + (this.text ? '\n' : '') + add.toUpperCase());
+      }
+      let t = this.text;
+      for (const ch of Input.typed) {
+        const c = ch.toUpperCase();
+        if (c === ' ' || FONT[c]) t += c;
+      }
+      if (hit('Enter', 'NumpadEnter')) t += '\n';
+      this.bs = held('Backspace') ? this.bs + 1 : 0;
+      if (hit('Backspace') || (this.bs > 24 && this.bs % 3 === 0)) t = t.slice(0, -1); // hold to keep deleting
+      if (t !== this.text) this.edit(t);
+      this.editT++;
+      if (this.dirty && this.editT > 90) this.save(); // autosave 1.5 s after you stop typing
+    },
+    draw() {
+      drawTitleBackdrop();
+      panel(W / 2 - 200, 12, 400, 246, PAL.y);
+      drawTextOutlined(ctx, 'DEV NOTES', W / 2, 20, PAL.y, 2, 'center');
+      const when = this.savedAt ? '  -  UPDATED ' + new Date(this.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase() : '';
+      drawText(ctx, (this.canEdit ? 'YOU CAN EDIT THESE' : 'FROM ColdzeeYT') + when, W / 2, 40, PAL.m, 1, 'center');
+      const lines = wrapNotes(this.text);
+      const start = Math.max(0, lines.length - NOTE_ROWS - this.scroll);
+      if (this.loaded && !this.text && !this.canEdit) drawText(ctx, 'NO NOTES YET. CHECK BACK LATER!', W / 2, 120, PAL.n, 1, 'center');
+      lines.slice(start, start + NOTE_ROWS).forEach((l, i) => drawText(ctx, l, W / 2 - 186, 56 + i * 12, PAL.w));
+      if (this.canEdit && this.loaded && this.scroll === 0 && blink(15)) {
+        const last = lines[lines.length - 1] || '';
+        const row = Math.min(lines.length, NOTE_ROWS) - 1;
+        ctx.fillStyle = PAL.y; ctx.fillRect(W / 2 - 186 + textWidth(last) + (last ? 1 : 0), 56 + row * 12 + 7, 5, 1);
+      }
+      if (start > 0) drawText(ctx, '^ MORE', W / 2 + 186, 56, PAL.n, 1, 'right');
+      if (start + NOTE_ROWS < lines.length) drawText(ctx, 'v MORE', W / 2 + 186, 56 + (NOTE_ROWS - 1) * 12, PAL.n, 1, 'right');
+      const st = this.status || (this.dirty ? 'EDITED' : '');
+      drawText(ctx, st, W / 2 - 186, 238, st.startsWith('NOT') || st.startsWith('CANNOT') ? PAL.e : PAL.G);
+      const help = !this.canEdit ? 'UP/DOWN: SCROLL   ESC: BACK' : IS_TOUCH ? 'TAP: ADD A LINE   PAUSE: BACK' : 'TYPE   ENTER: NEW LINE   ESC: SAVE & BACK';
+      drawText(ctx, help, W / 2 + 186, 238, PAL.n, 1, 'right');
     },
   };
 
@@ -1053,12 +1145,20 @@
 
   // What's new, newest first (Credits > Changelog).
   const CHANGELOG = [
+    { title: 'UPDATE 1.9', text: [
+      'NOTES & VERSIONS', '',
+      '- DEV NOTES (TOP LEFT OF THE TITLE SCREEN):',
+      '  NEWS AND PLANS STRAIGHT FROM ColdzeeYT',
+      '- CHECK FOR UPDATES ANY TIME IN SETTINGS',
+      '  (WINDOWS APP)',
+      '- THE UPDATE POPUP IS IN THE GAME\'S OWN STYLE',
+      '- THE VERSION NUMBER SHOWS ON THE TITLE SCREEN',
+    ] },
     { title: 'UPDATE 1.8', text: [
       'STORIES & UPDATES', '',
       '- STORIES BUTTON AT THE TOP OF THE TITLE SCREEN:',
       '  MORE STORYLINES ARE COMING',
-      '- THE WINDOWS APP NOW UPDATES ITSELF (OR CHECK IN',
-      '  SETTINGS > UPDATES)',
+      '- THE WINDOWS APP NOW UPDATES ITSELF',
       '- NEW APP ICON: ASH IN THE RED CAP',
       '- LORE: THREE NEW PAGES ABOUT WREN (NO SPOILERS:',
       '  THEY UNLOCK AS YOU PLAY)',
@@ -3386,6 +3486,7 @@
       loadingFrames = scene !== Play && Sound.isLoading() ? loadingFrames + 1 : 0;
       if (fade > 0) fade--;
       Input.pressed.clear();
+      Input.typed.length = 0;
       Input.mouse.click = false;
       Input.mouse.moved = false;
       Input.any = false;
@@ -3491,7 +3592,7 @@
   });
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

@@ -172,6 +172,7 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*,
   and key bindings (Controls)
+- **Dev Notes** (top left): news and plans from the dev. Everyone can read them; only the `COLDZEEYT` account can write (checked by the account server)
 - **Stories** (top): Story 1 is Precipice; more storylines are coming (greyed out for now)
 - **Credits**, plus the **Changelog** (what's new in each update)
 - **Account** (bottom left): sign up / log in / log out, and save or load your saves in the cloud

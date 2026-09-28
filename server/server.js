@@ -14,6 +14,9 @@ const FILE = path.join(DATA_DIR, 'accounts.json');
 const MAX_BODY = 256 * 1024; // saves are small; this is plenty
 const MAX_TOKENS = 10; // devices logged in at once, per account
 const USER_RE = /^[A-Z0-9]{3,12}$/;
+// Dev notes: everyone can read them, only this account can write them.
+const DEV_USER = String(process.env.DEV_USER || 'COLDZEEYT').toUpperCase();
+const MAX_NOTES = 20000; // characters
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 let db = { accounts: {} };
@@ -115,6 +118,11 @@ async function handle(req, res) {
     return send(res, 200, { user, token, savedAt: acc.savedAt });
   }
 
+  if (route === 'GET /api/devnotes') { // public: anyone can read the dev's notes
+    const n = db.devnotes || { text: '', at: 0 };
+    return send(res, 200, { text: n.text, savedAt: n.at, dev: DEV_USER });
+  }
+
   const who = accountFor(req);
   if (!who) return send(res, 401, { error: 'PLEASE LOG IN AGAIN' });
   if (route === 'POST /api/logout') {
@@ -132,6 +140,14 @@ async function handle(req, res) {
     who.acc.savedAt = Date.now();
     persist();
     return send(res, 200, { ok: true, savedAt: who.acc.savedAt });
+  }
+  if (route === 'PUT /api/devnotes') {
+    if (who.name !== DEV_USER) return send(res, 403, { error: 'ONLY THE DEV CAN WRITE NOTES' });
+    const b = await readBody(req);
+    if (typeof b.text !== 'string') return send(res, 400, { error: 'NOTHING TO SAVE' });
+    db.devnotes = { text: b.text.slice(0, MAX_NOTES), at: Date.now() };
+    persist();
+    return send(res, 200, { ok: true, savedAt: db.devnotes.at });
   }
   return send(res, 404, { error: 'NOT FOUND' });
 }

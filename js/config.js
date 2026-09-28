@@ -1,6 +1,6 @@
 // The game's version, shown on the title screen and used to name releases.
 // Bump it together with a new UPDATE page in the changelog (Credits > Changelog).
-const GAME_VERSION = '1.8';
+const GAME_VERSION = '1.9';
 
 // Player settings (saved in the browser / desktop app).
 
