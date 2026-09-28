@@ -39,8 +39,8 @@ const Account = {
     return data;
   },
 
-  async call(method, path, body) {
-    this.busy = true;
+  async call(method, path, body, quiet) {
+    if (!quiet) this.busy = true; // (background calls like the ping don't block the Account buttons)
     try {
       const res = await fetch(this.server() + path, {
         method,
@@ -55,7 +55,7 @@ const Account = {
     } catch (e) {
       throw new Error(e instanceof TypeError ? 'CANNOT REACH THE SERVER' : e.message);
     } finally {
-      this.busy = false;
+      if (!quiet) this.busy = false;
     }
   },
 
@@ -67,6 +67,7 @@ const Account = {
     this.user = out.user;
     this.token = out.token;
     this.remember();
+    this.ping(); // show up as online straight away
     return out;
   },
   async logout() {
@@ -78,6 +79,20 @@ const Account = {
   // Dev notes: everyone can read them; only the developer's account can write (the server checks too).
   isDev() { return this.loggedIn() && this.user === 'COLDZEEYT'; },
   async loadNotes() { return this.call('GET', '/api/devnotes'); },
+  // ---- online status + messages (dev <-> players)
+  DEV: 'COLDZEEYT',
+  unread: 0,
+  async ping() {
+    if (!this.loggedIn()) { this.unread = 0; return; }
+    try {
+      const was = this.unread;
+      this.unread = (await this.call('POST', '/api/ping', null, true)).unread || 0;
+      if (this.unread > was && this.onNewMessage) this.onNewMessage();
+    } catch (e) { /* offline: try again next minute */ }
+  },
+  async inbox() { return (await this.call('GET', '/api/inbox')).convos || []; },
+  async conversation(name) { return this.call('GET', '/api/messages?with=' + encodeURIComponent(name), null, true); },
+  async sendMessage(to, text) { return this.call('POST', '/api/messages', { to, text }); },
   async players() { return (await this.call('GET', '/api/players')).players || []; },
   async saveNotes(text) { return this.call('PUT', '/api/devnotes', { text }); },
   // Replaces this device's saves with the cloud copy. Returns false if the cloud is empty.
@@ -92,3 +107,7 @@ const Account = {
   },
 };
 Account.load();
+// While the game is open, tell the server we're here once a minute (that's what
+// "online" means) and pick up new messages.
+setTimeout(() => Account.ping(), 3000);
+setInterval(() => Account.ping(), 60000);

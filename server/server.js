@@ -17,6 +17,11 @@ const USER_RE = /^[A-Z0-9]{3,12}$/;
 // Dev notes: everyone can read them, only this account can write them.
 const DEV_USER = String(process.env.DEV_USER || 'COLDZEEYT').toUpperCase();
 const MAX_NOTES = 20000; // characters
+const ONLINE_MS = 2 * 60 * 1000; // seen in the last 2 minutes = online
+const MAX_MSG = 300; // characters per message
+// Direct messages are only between the dev and a player (never player to player).
+const canTalk = (a, b) => a !== b && (a === DEV_USER || b === DEV_USER);
+const sent = new Map(); // name -> recent send times (flood control)
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 let db = { accounts: {} };
@@ -126,6 +131,53 @@ async function handle(req, res) {
 
   const who = accountFor(req);
   if (!who) return send(res, 401, { error: 'PLEASE LOG IN AGAIN' });
+  // The game pings once a minute while it's open: that's how "online" works.
+  if (route === 'POST /api/ping') {
+    who.acc.lastSeen = Date.now();
+    const unread = (db.messages || []).filter((m) => m.to === who.name && !m.read).length;
+    return send(res, 200, { ok: true, unread });
+  }
+  // ---- direct messages (dev <-> players)
+  if (route === 'GET /api/inbox') {
+    const convos = {};
+    for (const m of db.messages || []) {
+      if (m.from !== who.name && m.to !== who.name) continue;
+      const other = m.from === who.name ? m.to : m.from;
+      const c = convos[other] || (convos[other] = { with: other, last: null, unread: 0 });
+      c.last = { from: m.from, text: m.text, at: m.at };
+      if (m.to === who.name && !m.read) c.unread++;
+    }
+    const list = Object.values(convos).sort((x, y) => y.last.at - x.last.at);
+    return send(res, 200, { convos: list, dev: DEV_USER });
+  }
+  if (route === 'GET /api/messages') {
+    const other = String(url.searchParams.get('with') || '').toUpperCase();
+    if (!canTalk(who.name, other)) return send(res, 403, { error: 'YOU CAN ONLY MESSAGE ' + DEV_USER });
+    const msgs = (db.messages || []).filter((m) => (m.from === who.name && m.to === other) || (m.from === other && m.to === who.name));
+    let changed = false;
+    for (const m of msgs) if (m.to === who.name && !m.read) { m.read = true; changed = true; }
+    if (changed) persist();
+    const acc = db.accounts[other];
+    return send(res, 200, { with: other, online: !!(acc && Date.now() - (acc.lastSeen || 0) < ONLINE_MS), messages: msgs.slice(-100).map(({ from, text, at }) => ({ from, text, at })) });
+  }
+  if (route === 'POST /api/messages') {
+    const b = await readBody(req);
+    const to = String(b.to || '').toUpperCase();
+    const text = String(b.text || '').trim().slice(0, MAX_MSG);
+    if (!text) return send(res, 400, { error: 'TYPE A MESSAGE FIRST' });
+    if (!db.accounts[to]) return send(res, 404, { error: 'NO PLAYER CALLED ' + to });
+    if (!canTalk(who.name, to)) return send(res, 403, { error: 'YOU CAN ONLY MESSAGE ' + DEV_USER });
+    const now = Date.now();
+    const recent = (sent.get(who.name) || []).filter((t) => now - t < 60000);
+    if (recent.length >= 10) return send(res, 429, { error: 'SLOW DOWN! TRY AGAIN IN A MINUTE' });
+    recent.push(now); sent.set(who.name, recent);
+    db.messages = db.messages || [];
+    db.messages.push({ from: who.name, to, text, at: now, read: false });
+    if (db.messages.length > 5000) db.messages = db.messages.slice(-5000);
+    who.acc.lastSeen = now;
+    persist();
+    return send(res, 200, { ok: true });
+  }
   if (route === 'POST /api/logout') {
     who.acc.tokens = who.acc.tokens.filter((t) => t !== who.h);
     persist();
@@ -155,9 +207,10 @@ async function handle(req, res) {
           if (k === 'precipice.onlyup' && d) onlyUp = Math.max(onlyUp, d.best || 0);
         } catch (e) { /* not JSON */ }
       }
-      return { name, created: a.created || 0, lastLogin: a.lastLogin || 0, savedAt: a.savedAt || 0, stage, done, onlyUp };
+      const lastSeen = Math.max(a.lastSeen || 0, a.lastLogin || 0);
+      return { name, created: a.created || 0, lastLogin: a.lastLogin || 0, lastSeen, online: Date.now() - lastSeen < ONLINE_MS, savedAt: a.savedAt || 0, stage, done, onlyUp };
     });
-    players.sort((x, y) => Math.max(y.lastLogin, y.savedAt) - Math.max(x.lastLogin, x.savedAt));
+    players.sort((x, y) => (y.online - x.online) || (y.lastSeen - x.lastSeen)); // online first
     return send(res, 200, { players });
   }
   if (route === 'PUT /api/devnotes') {

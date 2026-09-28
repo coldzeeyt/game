@@ -444,7 +444,7 @@
       r.push({ x: 6, y: 14, w: textWidth(a[3]) + 16, h: 16 }); // DEV NOTES (top left)
       return r;
     },
-    cornerLabels() { return [Account.loggedIn() ? 'ACCOUNT: ' + Account.user : 'ACCOUNT', 'MORE', 'STORIES', 'DEV NOTES']; },
+    cornerLabels() { return [(Account.loggedIn() ? 'ACCOUNT: ' + Account.user : 'ACCOUNT') + (Account.unread ? ' (' + Account.unread + ' NEW)' : ''), 'MORE', 'STORIES', 'DEV NOTES']; },
     setCorner(c) {
       if (c === this.corner) return;
       if (this.corner < 0) this.menuIndex = this.menu.index;
@@ -553,7 +553,8 @@
   // Notes from the developer, kept on the account server. Everyone can read
   // them; only the dev's account (COLDZEEYT) can write, and the server checks.
   const NOTE_COLS = 58, NOTE_ROWS = 13;
-  function wrapNotes(text) {
+  function wrapNotes(text, cols = NOTE_COLS) {
+    const NOTE_COLS = cols; // (shadows the default so messages can wrap narrower)
     const out = [];
     for (const para of text.split('\n')) {
       let line = '';
@@ -674,15 +675,31 @@
   // logged in, and how far its cloud save has got. The server never has passwords.
   const Players = {
     enter() {
-      this.list = null; this.scroll = 0; this.status = 'LOADING...';
+      this.list = null; this.scroll = 0; this.index = 0; this.status = 'LOADING...'; this.t = 0;
+      this.load();
+    },
+    load() {
       Account.players().then((l) => { this.list = l; this.status = ''; }, (e) => { this.status = e.message; });
     },
+    rowY(i) { return 66 + i * 12; },
     update() {
       titleUpdate();
-      if (hit(...K.back) || Input.mouse.click) { Sound.sfx('select'); setScene(DevNotes); return; }
-      const n = this.list ? this.list.length : 0;
-      if (hit(...K.down)) this.scroll = Math.min(this.scroll + 1, Math.max(0, n - 14));
-      if (hit(...K.up)) this.scroll = Math.max(0, this.scroll - 1);
+      if (++this.t % 900 === 0) this.load(); // refresh who's online every 15 s
+      if (hit(...K.back)) { Sound.sfx('select'); setScene(DevNotes); return; }
+      if (!this.list) return;
+      const n = this.list.length;
+      if (hit(...K.down) && this.index < n - 1) { this.index++; Sound.sfx('move'); }
+      if (hit(...K.up) && this.index > 0) { this.index--; Sound.sfx('move'); }
+      const m = Input.mouse;
+      let chosen = hit('Enter', 'NumpadEnter', 'Space');
+      if (m.moved || m.click) for (let i = 0; i < 14; i++) {
+        if (m.y < this.rowY(i) - 2 || m.y > this.rowY(i) + 9 || Math.abs(m.x - W / 2) > 214 || !this.list[this.scroll + i]) continue;
+        this.index = this.scroll + i;
+        if (m.click) chosen = true;
+      }
+      this.scroll = clamp(this.scroll, this.index - 13, this.index);
+      const pl = this.list[this.index];
+      if (chosen && pl && pl.name !== Account.user) { Sound.sfx('select'); setScene(Chat, pl.name, Players); }
     },
     progress(pl) {
       if (pl.done) return 'FINISHED!';
@@ -694,21 +711,136 @@
       drawTitleBackdrop();
       panel(W / 2 - 220, 8, 440, 254, PAL.y);
       drawTextOutlined(ctx, 'PLAYERS', W / 2, 16, PAL.y, 2, 'center');
-      const date = (t) => (t ? new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() : '-');
       if (!this.list) { drawText(ctx, this.status, W / 2, 120, PAL.m, 1, 'center'); return; }
-      drawText(ctx, this.list.length + ' ACCOUNTS (NO PASSWORDS ARE EVER STORED)', W / 2, 36, PAL.m, 1, 'center');
-      const cols = [W / 2 - 208, W / 2 - 128, W / 2 - 76, W / 2 + 6, W / 2 + 118];
-      ['NAME', 'JOINED', 'LAST LOGIN', 'PROGRESS', 'ONLY UP'].forEach((h, i) => drawText(ctx, h, cols[i], 52, PAL.c));
+      const on = this.list.filter((p) => p.online).length;
+      drawText(ctx, this.list.length + ' ACCOUNTS, ' + on + ' ONLINE (NO PASSWORDS ARE EVER STORED)', W / 2, 36, PAL.m, 1, 'center');
+      const cols = [W / 2 - 208, W / 2 - 124, W / 2 - 70, W / 2 + 8, W / 2 + 120];
+      ['NAME', 'JOINED', 'LAST SEEN', 'PROGRESS', 'ONLY UP'].forEach((h, i) => drawText(ctx, h, cols[i], 52, PAL.c));
       this.list.slice(this.scroll, this.scroll + 14).forEach((pl, i) => {
-        const y = 66 + i * 12;
-        drawText(ctx, pl.name, cols[0], y, pl.name === 'COLDZEEYT' ? PAL.y : PAL.w);
-        drawText(ctx, date(pl.created), cols[1], y, PAL.l);
-        drawText(ctx, date(pl.lastLogin), cols[2], y, PAL.l);
+        const y = this.rowY(i), sel = this.scroll + i === this.index;
+        if (sel) { ctx.fillStyle = 'rgba(60,188,252,0.15)'; ctx.fillRect(W / 2 - 214, y - 2, 428, 11); }
+        ctx.fillStyle = pl.online ? PAL.G : '#3c3c5c'; ctx.fillRect(cols[0] - 5, y + 2, 3, 3); // online dot
+        drawText(ctx, pl.name, cols[0], y, pl.name === Account.DEV ? PAL.y : PAL.w);
+        drawText(ctx, ago(pl.created), cols[1], y, PAL.l);
+        drawText(ctx, pl.online ? 'ONLINE' : ago(pl.lastSeen), cols[2], y, pl.online ? PAL.G : PAL.l);
         drawText(ctx, this.progress(pl), cols[3], y, pl.done ? PAL.G : PAL.w);
         drawText(ctx, pl.onlyUp ? pl.onlyUp + 'M' : '-', cols[4], y, PAL.C);
       });
-      if (this.list.length > 14) drawText(ctx, 'UP/DOWN: SCROLL', W / 2 - 208, 244, PAL.n);
+      drawText(ctx, 'ENTER / CLICK: MESSAGE THEM', W / 2 - 208, 244, PAL.n);
       drawText(ctx, 'ESC: BACK', W / 2 + 208, 244, PAL.n, 1, 'right');
+    },
+  };
+
+  // "5M AGO", "3H AGO", "SEP 28"
+  function ago(t) {
+    if (!t) return '-';
+    const s = (Date.now() - t) / 1000;
+    if (s < 60) return 'JUST NOW';
+    if (s < 3600) return Math.floor(s / 60) + 'M AGO';
+    if (s < 86400) return Math.floor(s / 3600) + 'H AGO';
+    return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+  }
+
+  // ---------------------------------------------------------------- messages
+  // Direct messages between the dev (COLDZEEYT) and players. The server only
+  // allows dev <-> player conversations, never player <-> player.
+  const MSG_COLS = 54;
+  const Chat = {
+    enter(name, back) {
+      this.with = name; this.back = back || AccountScene; this.msgs = null; this.online = false;
+      this.text = ''; this.status = 'LOADING...'; this.t = 0; this.bs = 0; this.sending = false;
+      this.load();
+    },
+    load() {
+      Account.conversation(this.with).then((c) => { this.msgs = c.messages; this.online = c.online; this.status = ''; Account.ping(); },
+        (e) => { this.status = e.message; });
+    },
+    send() {
+      const text = this.text.trim();
+      if (!text || this.sending) return;
+      this.sending = true; this.status = 'SENDING...';
+      Account.sendMessage(this.with, text).then(() => { this.sending = false; this.text = ''; this.status = ''; Sound.sfx('check'); this.load(); },
+        (e) => { this.sending = false; this.status = e.message; Sound.sfx('die'); });
+    },
+    update() {
+      titleUpdate();
+      this.t++;
+      if (this.t % 300 === 0) this.load(); // check for replies every 5 s
+      if (hit('Escape')) { Sound.sfx('select'); setScene(this.back); return; }
+      if (IS_TOUCH && Input.mouse.click) {
+        const v = prompt('MESSAGE TO ' + this.with);
+        Input.down.clear();
+        if (v) { this.text = v.toUpperCase().slice(0, 300); this.send(); }
+        return;
+      }
+      let t = this.text;
+      for (const ch of Input.typed) { const c = ch.toUpperCase(); if ((c === ' ' || FONT[c]) && t.length < 300) t += c; }
+      this.bs = held('Backspace') ? this.bs + 1 : 0;
+      if (hit('Backspace') || (this.bs > 24 && this.bs % 3 === 0)) t = t.slice(0, -1);
+      this.text = t;
+      if (hit('Enter', 'NumpadEnter')) this.send();
+    },
+    draw() {
+      drawTitleBackdrop();
+      panel(W / 2 - 200, 8, 400, 254, PAL.C);
+      drawTextOutlined(ctx, this.with, W / 2, 16, PAL.C, 2, 'center');
+      drawText(ctx, this.online ? 'ONLINE NOW' : 'OFFLINE (THEY WILL SEE IT LATER)', W / 2, 36, this.online ? PAL.G : PAL.m, 1, 'center');
+      // messages, newest at the bottom
+      const lines = [];
+      for (const m of this.msgs || []) {
+        const mine = m.from === Account.user;
+        lines.push({ text: (mine ? 'YOU' : m.from) + '  ' + ago(m.at), color: mine ? PAL.c : PAL.y, head: true });
+        for (const l of wrapNotes(m.text, MSG_COLS)) lines.push({ text: l, color: PAL.w });
+      }
+      if (this.msgs && !this.msgs.length) drawText(ctx, 'NO MESSAGES YET. SAY HI!', W / 2, 110, PAL.n, 1, 'center');
+      lines.slice(-13).forEach((l, i) => drawText(ctx, l.text, W / 2 - 186, 50 + i * 12, l.color));
+      // typing box
+      ctx.fillStyle = 'rgba(8,6,28,0.9)'; ctx.fillRect(W / 2 - 190, 212, 380, 16);
+      ctx.fillStyle = '#342468'; ctx.fillRect(W / 2 - 190, 212, 380, 1); ctx.fillRect(W / 2 - 190, 227, 380, 1);
+      const shown = this.text.slice(-60);
+      drawText(ctx, shown || (IS_TOUCH ? 'TAP TO WRITE A MESSAGE' : 'TYPE A MESSAGE...'), W / 2 - 186, 216, shown ? PAL.w : PAL.n);
+      if (!IS_TOUCH && blink(15)) { ctx.fillStyle = PAL.y; ctx.fillRect(W / 2 - 186 + textWidth(shown) + 1, 223, 5, 1); }
+      drawText(ctx, this.status, W / 2 - 186, 236, this.status.endsWith('...') ? PAL.m : PAL.e);
+      drawText(ctx, IS_TOUCH ? 'PAUSE: BACK' : 'ENTER: SEND   ESC: BACK', W / 2 + 186, 236, PAL.n, 1, 'right');
+      drawText(ctx, 'MESSAGES ARE KEPT ON THE GAME SERVER. BE NICE!', W / 2, 248, '#3c3c5c', 1, 'center');
+    },
+  };
+
+  // The dev's inbox: every conversation, newest first.
+  const Inbox = {
+    enter() {
+      this.list = null; this.index = 0; this.status = 'LOADING...';
+      Account.inbox().then((l) => { this.list = l; this.status = ''; }, (e) => { this.status = e.message; });
+    },
+    update() {
+      titleUpdate();
+      if (hit(...K.back)) { Sound.sfx('select'); setScene(AccountScene); return; }
+      if (!this.list || !this.list.length) return;
+      const n = this.list.length;
+      if (hit(...K.down)) this.index = Math.min(n - 1, this.index + 1);
+      if (hit(...K.up)) this.index = Math.max(0, this.index - 1);
+      const m = Input.mouse;
+      let chosen = hit('Enter', 'NumpadEnter', 'Space');
+      if (m.moved || m.click) this.list.slice(0, 12).forEach((c, i) => {
+        if (m.y < 54 + i * 16 - 3 || m.y > 54 + i * 16 + 11) return;
+        this.index = i; if (m.click) chosen = true;
+      });
+      if (chosen) { Sound.sfx('select'); setScene(Chat, this.list[this.index].with, Inbox); }
+    },
+    draw() {
+      drawTitleBackdrop();
+      panel(W / 2 - 200, 8, 400, 254, PAL.C);
+      drawTextOutlined(ctx, 'MESSAGES', W / 2, 16, PAL.C, 2, 'center');
+      if (!this.list) { drawText(ctx, this.status, W / 2, 120, PAL.m, 1, 'center'); return; }
+      if (!this.list.length) drawText(ctx, 'NO MESSAGES YET. PICK SOMEONE IN DEV NOTES > PLAYERS.', W / 2, 110, PAL.n, 1, 'center');
+      this.list.slice(0, 12).forEach((c, i) => {
+        const y = 54 + i * 16, sel = i === this.index;
+        if (sel) { ctx.fillStyle = 'rgba(60,188,252,0.15)'; ctx.fillRect(W / 2 - 190, y - 3, 380, 14); }
+        drawText(ctx, c.with + (c.unread ? '  (' + c.unread + ' NEW)' : ''), W / 2 - 184, y, c.unread ? PAL.y : PAL.w);
+        drawText(ctx, (c.last.from === Account.user ? 'YOU: ' : '') + c.last.text.slice(0, 28), W / 2 - 40, y, PAL.m);
+        drawText(ctx, ago(c.last.at), W / 2 + 184, y, PAL.n, 1, 'right');
+      });
+      drawText(ctx, 'ENTER: OPEN   ESC: BACK', W / 2, 244, PAL.n, 1, 'center');
     },
   };
 
@@ -1223,14 +1355,12 @@
   // What's new, newest first (Credits > Changelog).
   const CHANGELOG = [
     { title: 'UPDATE 1.9', text: [
-      'ONLY UP, NOTES & VERSIONS', '',
+      'ONLY UP, NOTES & MESSAGES', '',
       '- ONLY UP (IN MORE): ONE HUGE TOWER, NO',
       '  CHECKPOINTS. HOW HIGH CAN YOU GET?',
-      '- DEV NOTES (TOP LEFT OF THE TITLE SCREEN):',
-      '  NEWS AND PLANS STRAIGHT FROM ColdzeeYT (REFRESH',
-      '  FOR THE LATEST)',
-      '- CHECK FOR UPDATES ANY TIME IN SETTINGS',
-      '  (WINDOWS APP)',
+      '- DEV NOTES (TOP LEFT): NEWS FROM ColdzeeYT',
+      '- MESSAGE THE DEV: ACCOUNT > MESSAGE COLDZEEYT',
+      '- CHECK FOR UPDATES IN SETTINGS (WINDOWS APP)',
       '- THE UPDATE POPUP IS IN THE GAME\'S OWN STYLE',
       '- THE VERSION NUMBER SHOWS ON THE TITLE SCREEN',
     ] },
@@ -1782,7 +1912,7 @@
       this.confirmLoad = false;
       this.t = 0;
     },
-    rows() { return Account.loggedIn() ? ['save', 'load', 'logout', 'back'] : ['user', 'pass', 'login', 'signup', 'back']; },
+    rows() { return Account.loggedIn() ? ['save', 'load', 'messages', 'logout', 'back'] : ['user', 'pass', 'login', 'signup', 'back']; },
     say(msg, color) { this.msg = msg; this.msgColor = color || PAL.m; },
     run(promise, done) {
       this.say('PLEASE WAIT...', PAL.y);
@@ -1810,6 +1940,9 @@
           Sound.sfx('check');
           this.say(row === 'signup' ? 'ACCOUNT MADE! WELCOME, ' + out.user + '!' : out.savedAt ? 'WELCOME BACK! LOAD TO GET YOUR SAVES.' : 'WELCOME BACK, ' + out.user + '!', PAL.G);
         });
+      } else if (row === 'messages') {
+        // the dev gets an inbox of everyone; players talk to the dev
+        if (Account.isDev()) setScene(Inbox); else setScene(Chat, Account.DEV, AccountScene);
       } else if (row === 'save') {
         this.run(Account.save(), () => { Sound.sfx('check'); this.say('SAVED TO THE CLOUD!', PAL.G); });
       } else if (row === 'load') {
@@ -1878,7 +2011,8 @@
       const labels = {
         user: 'NAME: ' + this.user + (this.editing === 'user' ? caret : this.user ? '' : '...'),
         pass: 'PASSWORD: ' + '*'.repeat(this.pass.length) + (this.editing === 'pass' ? caret : this.pass ? '' : '...'),
-        login: 'LOG IN', signup: 'SIGN UP', save: 'SAVE', load: this.confirmLoad ? 'LOAD - SURE?' : 'LOAD', logout: 'LOG OUT', back: 'BACK',
+        login: 'LOG IN', signup: 'SIGN UP', save: 'SAVE',
+        messages: (Account.isDev() ? 'MESSAGES' : 'MESSAGE ' + Account.DEV) + (Account.unread ? ' (' + Account.unread + ' NEW)' : ''), load: this.confirmLoad ? 'LOAD - SURE?' : 'LOAD', logout: 'LOG OUT', back: 'BACK',
       };
       this.rows().forEach((r, i) => {
         const y = 104 + i * 22, sel = i === this.index;
@@ -3636,6 +3770,7 @@
     while (acc >= STEP) {
       if (UpdateBox.active()) UpdateBox.update(); else scene.update();
       if (laterT > 0) laterT--;
+      if (mailT > 0) mailT--;
       frame++;
       loadingFrames = scene !== Play && Sound.isLoading() ? loadingFrames + 1 : 0;
       if (fade > 0) fade--;
@@ -3652,6 +3787,7 @@
     scene.draw();
     if (UpdateBox.active()) UpdateBox.draw();
     else if (laterT > 0 && scene !== Play) drawTextOutlined(ctx, 'UPDATE WILL INSTALL WHEN YOU CLOSE THE GAME', W / 2, 6, PAL.y, 1, 'center');
+    else if (mailT > 0 && scene !== Play && scene !== Chat) drawTextOutlined(ctx, 'NEW MESSAGE! (ACCOUNT > MESSAGES)', W / 2, 6, PAL.y, 1, 'center');
     else if (scene === Title && UpdateBox.uiShown()) drawTextOutlined(ctx, UpdateBox.statusText(), 6, H - 34, UpdateBox.st && UpdateBox.st.state === 'error' ? '#fc7460' : '#8c9cd8');
     if (fade > 0) {
       ctx.fillStyle = 'rgba(0,0,0,' + fade / FADE + ')';
@@ -3738,6 +3874,8 @@
     },
   };
   let laterT = 0; // "installs when you close the game" note after picking LATER
+  let mailT = 0; // "NEW MESSAGE!" note
+  Account.onNewMessage = () => { mailT = 240; Sound.sfx('fragment'); };
   function toastLater() { laterT = 180; }
   if (window.precipiceApp) window.precipiceApp.onUpdateState((st) => {
     if (!st) return;
@@ -3746,7 +3884,7 @@
   });
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Players, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Players, Chat, Inbox, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

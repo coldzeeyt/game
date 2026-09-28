@@ -172,6 +172,7 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
   *Bare Bones* → *Simple* → *Standard* → *Detailed* → *Full Detail*,
   and key bindings (Controls)
+- **Messages** (Account > Messages): players can message the dev (COLDZEEYT) and the dev can message any player from Dev Notes > Players, which also shows who's online. Players can't message each other. Messages are kept on the account server
 - **Dev Notes** (top left): news and plans from the dev. Everyone can read them; only the `COLDZEEYT` account can write (checked by the account server)
 - **Stories** (top): Story 1 is Precipice; more storylines are coming (greyed out for now)
 - **Credits**, plus the **Changelog** (what's new in each update)
