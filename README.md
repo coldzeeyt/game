@@ -172,7 +172,8 @@ begins, so you can leave between chapters but not mid-chapter.
   toolbar), WASD / arrows / mouse wheel scroll, +/- change the width, [ ] the height, T test-plays, S saves,
   N renames, Esc opens the menu (save, test, publish online, exit). Everything snaps to the 16x16 grid.
 - **Online levels** (2.1): publish a level (needs an account) and everyone can find it in BROWSE ONLINE LEVELS
-  under RECENT, FEATURED (the dev stars levels with F) or SEARCH (name, author or level id). Stored on the
+  under RECENT, FEATURED (the dev stars levels with F) or SEARCH (name, author or level id). X (DELETE in
+  search) takes a level down: players can remove their own, the dev can remove any. Stored on the
   account server; each account can have 20 levels online
 - **Guide**: your goal, the collectables, everything on the mountain, and the controls
 - **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you; plus Wren, the Black Flame and what came after (these pages unlock as you reach that part of the story)

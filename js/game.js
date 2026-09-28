@@ -1423,6 +1423,17 @@
       if (sel && Account.isDev() && hit('KeyF') && this.TABS[this.tab] !== 'SEARCH') {
         Account.starLevel(sel.id).then((l) => { sel.featured = l.featured; this.msg = l.featured ? 'FEATURED: ' + l.name : 'UNFEATURED: ' + l.name; if (this.TABS[this.tab] === 'FEATURED') this.load(); }, (e) => { this.msg = e.message; });
       }
+      // take a level down: the dev can remove any level, players their own (press X twice)
+      const mayRemove = sel && (Account.isDev() || (Account.loggedIn() && sel.author === Account.user));
+      const searching = this.TABS[this.tab] === 'SEARCH'; // (X types a letter there: use DELETE)
+      if (mayRemove && (searching ? hit('Delete') : hit('KeyX', 'Delete'))) {
+        if (this.confirmDel !== sel.id) { this.confirmDel = sel.id; this.msg = 'PRESS ' + (searching ? 'DELETE' : 'X') + ' AGAIN TO TAKE DOWN ' + sel.name; Sound.sfx('pause'); }
+        else {
+          this.confirmDel = null; this.msg = 'TAKING DOWN...';
+          Account.unpublishLevel(sel.id).then(() => { this.msg = 'TAKEN DOWN: ' + sel.name; Sound.sfx('crumble'); this.load(); }, (e) => { this.msg = e.message; });
+        }
+      }
+      if (this.confirmDel && (!sel || sel.id !== this.confirmDel)) { this.confirmDel = null; this.msg = ''; }
       if (chosen && sel) { Sound.sfx('select'); this.play(sel); }
     },
     draw() {
@@ -1451,7 +1462,9 @@
         drawText(ctx, l.plays + ' PLAYS', W / 2 + 188, y, PAL.m, 1, 'right');
       });
       if (this.msg) drawText(ctx, this.msg, W / 2, 232, PAL.y, 1, 'center');
-      const help = 'ENTER: PLAY   TAB: SWITCH' + (Account.isDev() ? '   F: FEATURE' : '') + '   ESC: BACK';
+      const selL = (this.list || [])[this.index];
+      const canX = selL && (Account.isDev() || (Account.loggedIn() && selL.author === Account.user));
+      const help = 'ENTER: PLAY   TAB: SWITCH' + (Account.isDev() ? '   F: FEATURE' : '') + (canX ? (this.TABS[this.tab] === 'SEARCH' ? '   DEL: TAKE DOWN' : '   X: TAKE DOWN') : '') + '   ESC: BACK';
       drawText(ctx, help, W / 2, 246, PAL.n, 1, 'center');
     },
   };
@@ -2040,6 +2053,7 @@
       '- BROWSE ONLINE LEVELS: RECENT, FEATURED (PICKED',
       '  BY THE DEV) AND SEARCH BY NAME OR AUTHOR',
       '  (THIS REPLACES SHARE CODES)',
+      '- TAKE DOWN YOUR OWN ONLINE LEVELS (X)',
       '- LEVEL EDITOR HAS ITS OWN BUTTON ON THE TITLE',
       '- NICER TEXT BOXES; LONG TEXT WRAPS NEATLY',
       '- PHONES: THE TOUCH BUTTONS ONLY SHOW WHILE',
