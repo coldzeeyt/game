@@ -598,7 +598,7 @@
     },
     refreshRect() { return { x: W / 2 + 124, y: 20, w: 60, h: 14 }; }, // top right of the notes box
     playersRect() { return { x: W / 2 - 184, y: 20, w: 60, h: 14 }; }, // top left, dev only
-    announceRect() { return { x: W / 2 - 184, y: 36, w: 60, h: 14 }; }, // under PLAYERS, dev only
+    announceRect() { return { x: W / 2 - 188, y: 234, w: 64, h: 14 }; }, // bottom left, dev only
     save() {
       if (!this.loaded || this.saving) return;
       this.saving = true; this.dirty = false; this.status = 'SAVING...';
@@ -666,7 +666,7 @@
       if (start > 0) drawText(ctx, '^ MORE', W / 2 + 186, 56, PAL.n, 1, 'right');
       if (start + NOTE_ROWS < lines.length) drawText(ctx, 'v MORE', W / 2 + 186, 56 + (NOTE_ROWS - 1) * 12, PAL.n, 1, 'right');
       const st = this.status || (this.dirty ? 'EDITED' : '');
-      drawText(ctx, st, W / 2 - 186, 238, st.startsWith('NOT') || st.startsWith('CANNOT') ? PAL.e : PAL.G);
+      drawText(ctx, st, W / 2 - (this.canEdit ? 116 : 186), 238, st.startsWith('NOT') || st.startsWith('CANNOT') ? PAL.e : PAL.G);
       const help = !this.canEdit ? 'UP/DOWN: SCROLL   ESC: BACK' : IS_TOUCH ? 'TAP: ADD A LINE   PAUSE: BACK' : 'ENTER: NEW LINE   ESC: SAVE & BACK';
       drawText(ctx, help, W / 2 + 186, 238, PAL.n, 1, 'right');
       // REFRESH button (R for readers): fetch the newest notes
