@@ -93,6 +93,15 @@ const Account = {
   async inbox() { return (await this.call('GET', '/api/inbox')).convos || []; },
   async conversation(name) { return this.call('GET', '/api/messages?with=' + encodeURIComponent(name), null, true); },
   async sendMessage(to, text) { return this.call('POST', '/api/messages', { to, text }); },
+  // Title screen announcements (anyone can read; only the dev can set them).
+  announce: { popup: null, banner: '' },
+  async loadAnnounce() {
+    try {
+      const res = await fetch(this.server() + '/api/announce');
+      if (res.ok) this.announce = await res.json();
+    } catch (e) { /* offline: keep what we had */ }
+  },
+  async setAnnounce(popup, banner) { this.announce = await this.call('PUT', '/api/announce', { popup, banner }); return this.announce; },
   async players() { return (await this.call('GET', '/api/players')).players || []; },
   async saveNotes(text) { return this.call('PUT', '/api/devnotes', { text }); },
   // Replaces this device's saves with the cloud copy. Returns false if the cloud is empty.
@@ -109,5 +118,5 @@ const Account = {
 Account.load();
 // While the game is open, tell the server we're here once a minute (that's what
 // "online" means) and pick up new messages.
-setTimeout(() => Account.ping(), 3000);
-setInterval(() => Account.ping(), 60000);
+setTimeout(() => { Account.ping(); Account.loadAnnounce(); }, 3000);
+setInterval(() => { Account.ping(); Account.loadAnnounce(); }, 60000);

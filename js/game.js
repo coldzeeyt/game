@@ -415,6 +415,7 @@
       Sound.ensureTitle();
       this.idleT = 0;
       this.uiA = 1;
+      this.popup = null;
       this.cont = Slots.latest();
       const items = [];
       if (this.cont >= 0) items.push({ id: 'continue', label: 'CONTINUE' });
@@ -464,6 +465,16 @@
       const target = this.idleT >= IDLE_FRAMES ? 0 : 1;
       this.uiA = target < this.uiA ? Math.max(0, this.uiA - 1 / 120) : Math.min(1, this.uiA + 1 / 30);
       if (this.uiA < 1) return; // (the input that woke it up only wakes it up)
+      // the dev's announcement popup, once per announcement
+      if (!this.popup) { this.popup = Popup.current(); this.popupT = 0; }
+      if (this.popup) {
+        this.popupT++;
+        const m = Input.mouse, r = Popup.lastOk;
+        if (this.popupT > 20 && (hit(...K.ok, ...K.back) || (m.click && r && overlap({ x: m.x, y: m.y, w: 1, h: 1 }, r)))) {
+          Sound.sfx('select'); Popup.dismiss(this.popup); this.popup = null;
+        }
+        return;
+      }
       this.titleInput();
     },
     titleInput() {
@@ -530,7 +541,9 @@
         drawText(ctx, labels[i], r.x + r.w / 2, r.y + 5, sel ? PAL.c : '#b8c4f0', 1, 'center');
       });
       ctx.globalAlpha = 1;
+      drawBanner(Account.announce && Account.announce.banner, this.uiA);
       if (this.uiA < 1) this.drawWatcherTalk(1 - this.uiA);
+      if (this.popup) Popup.draw(this.popup, this.popupT);
     },
     // The Watcher steps out of the rain: "YOU REALLY CAN'T CHOOSE?"
     drawWatcherTalk(a) {
@@ -585,6 +598,7 @@
     },
     refreshRect() { return { x: W / 2 + 124, y: 20, w: 60, h: 14 }; }, // top right of the notes box
     playersRect() { return { x: W / 2 - 184, y: 20, w: 60, h: 14 }; }, // top left, dev only
+    announceRect() { return { x: W / 2 - 184, y: 36, w: 60, h: 14 }; }, // under PLAYERS, dev only
     save() {
       if (!this.loaded || this.saving) return;
       this.saving = true; this.dirty = false; this.status = 'SAVING...';
@@ -608,6 +622,9 @@
       const onPlayers = this.canEdit && overlap({ x: m.x, y: m.y, w: 1, h: 1 }, this.playersRect());
       this.hoverP = onPlayers;
       if (m.click && onPlayers) { Sound.sfx('select'); if (this.dirty) this.save(); setScene(Players); return; }
+      const onAnn = this.canEdit && overlap({ x: m.x, y: m.y, w: 1, h: 1 }, this.announceRect());
+      this.hoverA = onAnn;
+      if (m.click && onAnn) { Sound.sfx('select'); if (this.dirty) this.save(); setScene(Announce); return; }
       if (!this.loaded) return;
       const lines = wrapNotes(this.text).length;
       if (hit(...(this.canEdit ? ['ArrowUp'] : K.up))) this.scroll = Math.min(this.scroll + 1, Math.max(0, lines - NOTE_ROWS));
@@ -659,7 +676,7 @@
       ctx.fillStyle = this.hover ? PAL.c : '#342468';
       ctx.fillRect(r.x, r.y, r.w, 1); ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1); ctx.fillRect(r.x, r.y, 1, r.h); ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
       drawText(ctx, 'REFRESH', r.x + r.w / 2, r.y + 4, this.hover ? PAL.c : '#b8c4f0', 1, 'center');
-      if (this.canEdit) drawButton(this.playersRect(), 'PLAYERS', this.hoverP);
+      if (this.canEdit) { drawButton(this.playersRect(), 'PLAYERS', this.hoverP); drawButton(this.announceRect(), 'ANNOUNCE', this.hoverA); }
     },
   };
 
@@ -841,6 +858,138 @@
         drawText(ctx, ago(c.last.at), W / 2 + 184, y, PAL.n, 1, 'right');
       });
       drawText(ctx, 'ENTER: OPEN   ESC: BACK', W / 2, 244, PAL.n, 1, 'center');
+    },
+  };
+
+  // ---------------------------------------------------------------- announcements
+  // The dev's scrolling banner (top of the title screen) and one-time popup.
+  function drawBanner(text, alpha = 1) {
+    if (!text) return;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(8,6,28,0.85)'; ctx.fillRect(0, 0, W, 11);
+    ctx.fillStyle = '#881400'; ctx.fillRect(0, 11, W, 1);
+    const msg = text + '   *   ', w = textWidth(msg);
+    const off = Math.floor(frame * 0.6) % w;
+    for (let x = -off; x < W; x += w) drawText(ctx, msg, x, 2, PAL.y);
+    ctx.globalAlpha = 1;
+  }
+  const Popup = {
+    key: 'precipice.seenpopup',
+    current() {
+      const p = Account.announce && Account.announce.popup;
+      if (!p || !p.text) return null;
+      let seen = null;
+      try { seen = localStorage.getItem(this.key); } catch (e) { /* ignore */ }
+      return String(p.id) === seen ? null : p;
+    },
+    dismiss(p) { try { localStorage.setItem(this.key, String(p.id)); } catch (e) { /* ignore */ } },
+    okRect() { return { x: W / 2 - 24, y: 0, w: 48, h: 14 }; },
+    draw(p, t) {
+      const lines = wrapNotes(p.text, 46).slice(0, 9);
+      const h = 58 + lines.length * 11, y0 = Math.round(H / 2 - h / 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
+      if (!animatedPanel(W / 2 - 150, y0, 300, h, t, PAL.y)) return;
+      drawTextOutlined(ctx, 'ANNOUNCEMENT', W / 2, y0 + 8, PAL.y, 1, 'center');
+      drawText(ctx, 'FROM ColdzeeYT', W / 2, y0 + 20, PAL.m, 1, 'center');
+      lines.forEach((l, i) => drawText(ctx, l, W / 2, y0 + 36 + i * 11, PAL.w, 1, 'center'));
+      const r = Object.assign(this.okRect(), { y: y0 + h - 20 });
+      this.lastOk = r;
+      drawButton(r, 'OK', true);
+    },
+  };
+
+  // Dev Notes > ANNOUNCE (dev only): write the title popup and banner.
+  const Announce = {
+    enter() {
+      this.popup = (Account.announce.popup && Account.announce.popup.text) || '';
+      this.banner = Account.announce.banner || '';
+      // what to show: 0 both, 1 popup only, 2 banner only
+      this.mode = this.popup && !this.banner ? 1 : this.banner && !this.popup ? 2 : 0;
+      this.index = 1; this.status = ''; this.t = 0; this.bs = 0;
+    },
+    rows: ['mode', 'popup', 'banner', 'publish', 'clear', 'back'],
+    MODES: ['BOTH', 'POPUP ONLY', 'BANNER ONLY'],
+    rowY(i) { return [56, 74, 130, 168, 183, 198][i]; },
+    uses(field) { return this.mode === 0 || (field === 'popup' ? this.mode === 1 : this.mode === 2); },
+    act(row) {
+      if (row === 'back') { setScene(DevNotes); return; }
+      if (row === 'mode') { this.mode = (this.mode + 1) % 3; return; }
+      if (row === 'popup' || row === 'banner') {
+        if (!this.uses(row)) return;
+        if (IS_TOUCH) { const v = prompt(row === 'popup' ? 'POPUP TEXT' : 'BANNER TEXT', this[row]); Input.down.clear(); if (v != null) this[row] = v.toUpperCase(); }
+        else this.index++;
+        return;
+      }
+      const clear = row === 'clear';
+      if (clear) { this.popup = ''; this.banner = ''; }
+      if (!clear && !(this.uses('popup') && this.popup) && !(this.uses('banner') && this.banner)) { this.status = 'WRITE SOMETHING FIRST'; return; }
+      this.status = 'PUBLISHING...';
+      // whatever isn't chosen is taken down
+      Account.setAnnounce(this.uses('popup') ? this.popup : '', this.uses('banner') ? this.banner : '').then(() => { this.status = clear ? 'CLEARED' : 'LIVE! PLAYERS SEE IT WITHIN A MINUTE'; Sound.sfx('check'); },
+        (e) => { this.status = e.message; Sound.sfx('die'); });
+    },
+    update() {
+      titleUpdate();
+      this.t++;
+      if (hit('Escape')) { Sound.sfx('select'); setScene(DevNotes); return; }
+      const n = this.rows.length;
+      if (hit('ArrowUp')) { this.index = (this.index + n - 1) % n; Sound.sfx('move'); }
+      if (hit('ArrowDown') || hit('Tab')) { this.index = (this.index + 1) % n; Sound.sfx('move'); }
+      const m = Input.mouse;
+      let chosen = hit('Enter', 'NumpadEnter');
+      if (m.moved || m.click) this.rows.forEach((r, i) => {
+        const y = this.rowY(i), hgt = i === 1 || i === 2 ? 40 : 12;
+        if (m.y < y - 4 || m.y > y + hgt || Math.abs(m.x - W / 2) > 190) return;
+        this.index = i; if (m.click) chosen = true;
+      });
+      const row = this.rows[this.index];
+      if (row === 'mode') {
+        if (hit('ArrowLeft')) { this.mode = (this.mode + 2) % 3; Sound.sfx('move'); }
+        if (hit('ArrowRight')) { this.mode = (this.mode + 1) % 3; Sound.sfx('move'); }
+      }
+      if ((row === 'popup' || row === 'banner') && this.uses(row)) {
+        let t = this[row];
+        const max = row === 'popup' ? 400 : 200;
+        for (const ch of Input.typed) { const c = ch.toUpperCase(); if ((c === ' ' || FONT[c]) && t.length < max) t += c; }
+        this.bs = held('Backspace') ? this.bs + 1 : 0;
+        if (hit('Backspace') || (this.bs > 24 && this.bs % 3 === 0)) t = t.slice(0, -1);
+        this[row] = t;
+      }
+      if (chosen) { Sound.sfx('select'); this.act(row); }
+    },
+    draw() {
+      drawTitleBackdrop();
+      if (this.uses('banner')) drawBanner(this.banner); // live preview
+      panel(W / 2 - 200, 16, 400, 238, PAL.y);
+      drawTextOutlined(ctx, 'ANNOUNCE', W / 2, 22, PAL.y, 2, 'center');
+      drawText(ctx, 'SHOWN ON EVERYONE\'S TITLE SCREEN', W / 2, 40, PAL.m, 1, 'center');
+      const ms = this.index === 0;
+      drawText(ctx, 'SHOW:', W / 2 - 186, this.rowY(0), ms ? PAL.c : '#b8c4f0');
+      drawText(ctx, (ms ? '< ' : '  ') + this.MODES[this.mode] + (ms ? ' >' : '  '), W / 2, this.rowY(0), ms ? PAL.c : PAL.w, 1, 'center');
+      const field = (i, label, text, note, cols) => {
+        const y = this.rowY(i), sel = i === this.index;
+        const on = this.uses(i === 1 ? 'popup' : 'banner');
+        ctx.globalAlpha = on ? 1 : 0.35;
+        drawText(ctx, label + (on ? '' : '  (OFF)'), W / 2 - 186, y, sel ? PAL.c : '#b8c4f0');
+        drawText(ctx, note, W / 2 + 186, y, PAL.n, 1, 'right');
+        ctx.fillStyle = sel ? 'rgba(60,188,252,0.12)' : 'rgba(8,6,28,0.8)'; ctx.fillRect(W / 2 - 190, y + 10, 380, i === 1 ? 36 : 14);
+        const lines = wrapNotes(text || '', cols);
+        const shown = i === 1 ? lines.slice(-3) : [text.slice(-60)];
+        shown.forEach((l, k) => drawText(ctx, l, W / 2 - 186, y + 14 + k * 11, PAL.w));
+        if (on && sel && !IS_TOUCH && blink(15)) {
+          const last = shown[shown.length - 1] || '';
+          ctx.fillStyle = PAL.y; ctx.fillRect(W / 2 - 186 + textWidth(last) + 1, y + 21 + (shown.length - 1) * 11, 5, 1);
+        }
+        ctx.globalAlpha = 1;
+      };
+      field(1, 'POPUP (EVERY PLAYER SEES IT ONCE)', this.popup, this.popup.length + '/400', 60);
+      field(2, 'SCROLLING BANNER (TOP OF THE TITLE)', this.banner, this.banner.length + '/200', 60);
+      ['PUBLISH', 'CLEAR BOTH', 'BACK'].forEach((label, k) => {
+        const i = k + 3, sel = i === this.index;
+        drawText(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, this.rowY(i), sel ? PAL.c : '#b8c4f0', 1, 'center');
+      });
+      drawText(ctx, this.status, W / 2, 214, this.status.startsWith('LIVE') || this.status === 'CLEARED' ? PAL.G : PAL.e, 1, 'center');
+      drawText(ctx, IS_TOUCH ? 'TAP A BOX TO TYPE' : 'UP/DOWN: PICK   LEFT/RIGHT: SHOW   ENTER: NEXT / PUBLISH', W / 2, 232, PAL.n, 1, 'center');
     },
   };
 
@@ -1360,6 +1509,7 @@
       '  CHECKPOINTS. HOW HIGH CAN YOU GET?',
       '- DEV NOTES (TOP LEFT): NEWS FROM ColdzeeYT',
       '- MESSAGES: TALK TO THE DEV IN ACCOUNT > MESSAGES',
+      '- NEWS FROM THE DEV RIGHT ON THE TITLE SCREEN',
       '- CHECK FOR UPDATES IN SETTINGS (WINDOWS APP)',
       '- THE UPDATE POPUP IS IN THE GAME\'S OWN STYLE',
       '- THE VERSION NUMBER SHOWS ON THE TITLE SCREEN',
@@ -3884,7 +4034,7 @@
   });
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Players, Chat, Inbox, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Announce, Players, Chat, Inbox, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

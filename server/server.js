@@ -124,6 +124,11 @@ async function handle(req, res) {
     return send(res, 200, { user, token, savedAt: acc.savedAt });
   }
 
+  // Title screen announcements from the dev: a one-time popup and a scrolling banner.
+  if (route === 'GET /api/announce') { // public
+    const a = db.announce || {};
+    return send(res, 200, { popup: a.popup || null, banner: a.banner || '' });
+  }
   if (route === 'GET /api/devnotes') { // public: anyone can read the dev's notes
     const n = db.devnotes || { text: '', at: 0 };
     return send(res, 200, { text: n.text, savedAt: n.at, dev: DEV_USER });
@@ -212,6 +217,19 @@ async function handle(req, res) {
     });
     players.sort((x, y) => (y.online - x.online) || (y.lastSeen - x.lastSeen)); // online first
     return send(res, 200, { players });
+  }
+  if (route === 'PUT /api/announce') {
+    if (who.name !== DEV_USER) return send(res, 403, { error: 'ONLY THE DEV CAN ANNOUNCE' });
+    const b = await readBody(req);
+    const a = db.announce || (db.announce = {});
+    if (typeof b.banner === 'string') a.banner = b.banner.slice(0, 200);
+    if (typeof b.popup === 'string') {
+      const text = b.popup.slice(0, 400);
+      // a new id each time it changes, so every player sees the new popup once
+      a.popup = text ? (a.popup && a.popup.text === text ? a.popup : { text, id: Date.now() }) : null;
+    }
+    persist();
+    return send(res, 200, { popup: a.popup || null, banner: a.banner || '' });
   }
   if (route === 'PUT /api/devnotes') {
     if (who.name !== DEV_USER) return send(res, 403, { error: 'ONLY THE DEV CAN WRITE NOTES' });
