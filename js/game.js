@@ -814,6 +814,7 @@
       if (song.d && song.d - song.t < 4) Sound.fadeOutCredits(3800); // fade out over the last notes
       if (this.y > stop) this.y = Math.max(stop, this.y - speed);
       else if (!this.done) { this.done = true; this.t = 0; }
+      if (this.done) this.y -= Math.min(1, this.t / 90) * 0.9; // as Ash walks in, the words drift up and away
       if (this.done && this.t > 300 && (hit(...K.ok) || Input.mouse.click)) this.finish(); // let Ash's scene play
     },
     draw() {
@@ -835,9 +836,22 @@
     drawAsh() {
       const t = this.t, gy = H - 34; // ground line
       ctx.globalAlpha = Math.min(1, t / 40);
-      ctx.fillStyle = '#1c3c14'; ctx.fillRect(0, gy, W, 2);
-      ctx.fillStyle = '#342414'; ctx.fillRect(0, gy + 2, W, H - gy - 2);
-      for (let x = 3; x < W; x += 7 + (decoRoll(x, 3) % 5)) { ctx.fillStyle = '#2c5c1c'; ctx.fillRect(x, gy - 1 - (decoRoll(x, 4) % 2), 1, 2); }
+      // grassy ground in the game's own tiles, with a few trees, bushes and flowers
+      for (let tx = 0; tx * T < W; tx++) for (let r = 0; r < 3; r++) drawGround(tx * T, gy + r * T, tx, r, (x, y) => y >= 0);
+      if (Config.g.deco) {
+        ctx.drawImage(DECO.pine, 28, gy - 25);
+        ctx.drawImage(DECO.pine, 50, gy - 25);
+        ctx.drawImage(DECO.bush, 96, gy - 6);
+        ctx.drawImage(DECO.pine, W - 70, gy - 25);
+        ctx.drawImage(DECO.bush, W - 118, gy - 6);
+        ctx.drawImage(DECO.rock, W / 2 + 70, gy - 3);
+        for (let x = 6; x < W; x += 13 + (decoRoll(x, 7) % 17)) {
+          if (Math.abs(x - (W / 2 - 20)) < 22) continue; // not in the fire
+          const pick = decoRoll(x, 8) % 4;
+          if (pick === 0) ctx.drawImage(DECO.flowers[decoRoll(x, 9) % DECO.flowers.length], x, gy - 4);
+          else ctx.drawImage(DECO.tuft, x, gy - 3);
+        }
+      }
       // campfire: logs, stepped glow, flickering flames
       const fx = W / 2 - 20;
       const glow = 14 + Math.round(Math.sin(frame / 9) * 2);
@@ -867,7 +881,10 @@
         ctx.fillStyle = '#fcbcb0'; ctx.fillRect(ax + 11, ay + 3 - up * 2, 2, 2);
         ctx.fillStyle = '#d82800'; ctx.fillRect(ax + 11, ay + 5 - up * 2, 2, 3);
       }
-      if (!walking && since > 90) drawText(ctx, 'ASH MADE IT HOME, TOO.', W / 2, gy + 14, PAL.V, 1, 'center');
+      if (!walking && since > 90) {
+        ctx.globalAlpha = Math.min(1, (since - 90) / 40);
+        drawTextOutlined(ctx, 'ASH MADE IT HOME, TOO.', W / 2, 110, PAL.V, 2, 'center');
+      }
       ctx.globalAlpha = 1;
     },
   };
