@@ -1,5 +1,5 @@
 // Electron entry point: opens a window and loads the game.
-const { app, BrowserWindow, dialog, net } = require('electron');
+const { app, BrowserWindow, ipcMain, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -21,6 +21,7 @@ function createWindow() {
     title: 'Precipice',
     icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') },
   });
   win.setMenuBarVisibility(false);
   win.maximize();
@@ -38,8 +39,9 @@ function createWindow() {
 // Precipice.exe is a single portable file, so it updates itself: each GitHub
 // Actions build is released as "build-N" and this app's version is 1.0.N. On
 // start we look at the latest release; if it's newer, the new Precipice.exe is
-// downloaded next to this one, and swapped in when the game closes (or right
-// away if the player picks "Restart now").
+// downloaded to the temp folder (never next to the game, so nothing appears on
+// the desktop), and swapped in when the game closes (or right away if the
+// player picks "Restart now").
 const RELEASES = 'https://api.github.com/repos/coldzeeyt/precipice/releases/latest';
 const EXE = process.env.PORTABLE_EXECUTABLE_FILE; // set by the portable launcher; unset when run from source
 let pendingUpdate = null; // path of a downloaded new exe, waiting to be swapped in
@@ -51,6 +53,7 @@ const buildOf = (s) => {
 
 async function checkForUpdate() {
   if (process.platform !== 'win32' || !EXE) return;
+  fs.rmSync(EXE + '.update', { force: true }); // leftover from older versions of this updater
   const current = buildOf(app.getVersion()); // 1.0.N -> N
   const res = await net.fetch(RELEASES, { headers: { 'User-Agent': 'Precipice', Accept: 'application/vnd.github+json' } });
   if (!res.ok) return;
@@ -60,26 +63,25 @@ async function checkForUpdate() {
   const asset = (rel.assets || []).find((a) => a.name === 'Precipice.exe');
   if (!asset) return;
 
-  // Download next to the current exe (same drive, so the swap is a quick rename).
-  const target = EXE + '.update';
-  const dl = await net.fetch(asset.browser_download_url, { headers: { 'User-Agent': 'Precipice' } });
-  if (!dl.ok || !dl.body) return;
-  await pipeline(Readable.fromWeb(dl.body), fs.createWriteStream(target));
-  if (asset.size && fs.statSync(target).size !== asset.size) { fs.rmSync(target, { force: true }); return; }
+  // Download to the temp folder (skipped if this build is already waiting there).
+  const target = path.join(app.getPath('temp'), `Precipice-build-${latest}.exe`);
+  const have = fs.existsSync(target) && (!asset.size || fs.statSync(target).size === asset.size);
+  if (!have) {
+    const part = target + '.part';
+    const dl = await net.fetch(asset.browser_download_url, { headers: { 'User-Agent': 'Precipice' } });
+    if (!dl.ok || !dl.body) return;
+    await pipeline(Readable.fromWeb(dl.body), fs.createWriteStream(part));
+    if (asset.size && fs.statSync(part).size !== asset.size) { fs.rmSync(part, { force: true }); return; }
+    fs.renameSync(part, target);
+  }
   pendingUpdate = target;
-
-  if (!win || win.isDestroyed()) return;
-  const { response } = await dialog.showMessageBox(win, {
-    type: 'info',
-    title: 'Precipice update',
-    message: 'A new version of Precipice is ready!',
-    detail: 'Restart now to play it, or keep playing: it will be installed when you close the game.',
-    buttons: ['Restart now', 'Later'],
-    defaultId: 0,
-    cancelId: 1,
-  });
-  if (response === 0) installUpdate(true);
+  updateBuild = latest;
+  // The game shows its own 8-bit "UPDATE READY" box (see preload.js / game.js).
+  if (win && !win.isDestroyed()) win.webContents.send('update-ready', latest);
 }
+let updateBuild = 0;
+ipcMain.handle('update-status', () => (pendingUpdate ? updateBuild : 0)); // for a page that loaded after the download
+ipcMain.on('update-restart', () => installUpdate(true));
 
 // Swap the new exe in once this one has exited, using a tiny throwaway script.
 function installUpdate(relaunch) {
@@ -89,7 +91,7 @@ function installUpdate(relaunch) {
     '@echo off',
     'set tries=0',
     ':retry',
-    'timeout /t 1 /nobreak >nul',
+    'ping -n 2 127.0.0.1 >nul', // wait ~1 s (timeout.exe doesn't work in a hidden window)
     `move /y "${pendingUpdate}" "${EXE}" >nul 2>&1 && goto done`,
     'set /a tries+=1',
     'if %tries% lss 60 goto retry',

@@ -3274,7 +3274,8 @@
     acc += Math.min(100, now - last);
     last = now;
     while (acc >= STEP) {
-      scene.update();
+      if (UpdateBox.active()) UpdateBox.update(); else scene.update();
+      if (laterT > 0) laterT--;
       frame++;
       loadingFrames = scene !== Play && Sound.isLoading() ? loadingFrames + 1 : 0;
       if (fade > 0) fade--;
@@ -3288,6 +3289,8 @@
     const size = viewSize().join('x') + ':' + Config.res;
     if (size !== lastSize) { lastSize = size; resize(); }
     scene.draw();
+    if (UpdateBox.active()) UpdateBox.draw();
+    else if (laterT > 0 && scene !== Play) drawTextOutlined(ctx, 'UPDATE WILL INSTALL WHEN YOU CLOSE THE GAME', W / 2, 6, PAL.y, 1, 'center');
     if (fade > 0) {
       ctx.fillStyle = 'rgba(0,0,0,' + fade / FADE + ')';
       ctx.fillRect(0, 0, W, H);
@@ -3302,8 +3305,57 @@
     requestAnimationFrame(loop);
   }
 
+  // ---------------------------------------------------------------- update box (desktop app)
+  // When the Windows app has downloaded a new version, show an 8-bit box over
+  // the menus (never mid-level): RESTART NOW or LATER (installs on close).
+  const UpdateBox = {
+    build: 0, shown: false, done: false, index: 0, t: 0,
+    ready(build) { this.build = build; },
+    active() { return this.build && !this.done && scene !== Play; },
+    rects() { return [{ x: W / 2 - 96, y: 158, w: 88, h: 16 }, { x: W / 2 + 8, y: 158, w: 88, h: 16 }]; },
+    update() {
+      if (!this.shown) { this.shown = true; this.t = 0; Sound.sfx('fragment'); }
+      this.t++;
+      if (hit(...K.left)) { this.index = 0; Sound.sfx('move'); }
+      if (hit(...K.right)) { this.index = 1; Sound.sfx('move'); }
+      const m = Input.mouse;
+      let chosen = hit(...K.ok);
+      if (m.moved || m.click) this.rects().forEach((r, i) => {
+        if (!overlap({ x: m.x, y: m.y, w: 1, h: 1 }, r)) return;
+        if (m.moved && this.index !== i) { this.index = i; Sound.sfx('move'); }
+        if (m.click) { this.index = i; chosen = true; }
+      });
+      if (hit(...K.back)) { chosen = true; this.index = 1; }
+      if (!chosen) return;
+      Sound.sfx('select');
+      this.done = true;
+      if (this.index === 0) window.precipiceApp.restartNow();
+      else toastLater();
+    },
+    draw() {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, W, H);
+      if (!animatedPanel(W / 2 - 150, 78, 300, 110, this.t, PAL.y)) return;
+      drawTextOutlined(ctx, 'UPDATE READY!', W / 2, 88, PAL.y, 2, 'center');
+      drawText(ctx, 'A NEW VERSION OF PRECIPICE IS HERE.', W / 2, 114, PAL.w, 1, 'center');
+      drawText(ctx, 'RESTART TO PLAY IT, OR KEEP PLAYING AND', W / 2, 128, PAL.m, 1, 'center');
+      drawText(ctx, "IT'LL BE INSTALLED WHEN YOU CLOSE THE GAME.", W / 2, 138, PAL.m, 1, 'center');
+      ['RESTART NOW', 'LATER'].forEach((label, i) => {
+        const r = this.rects()[i], sel = i === this.index;
+        ctx.fillStyle = sel ? 'rgba(60,188,252,0.25)' : 'rgba(8,6,28,0.8)';
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.fillStyle = sel ? PAL.c : '#342468';
+        ctx.fillRect(r.x, r.y, r.w, 1); ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1); ctx.fillRect(r.x, r.y, 1, r.h); ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
+        drawText(ctx, label, r.x + r.w / 2, r.y + 5, sel ? PAL.c : '#b8c4f0', 1, 'center');
+      });
+    },
+  };
+  let laterT = 0; // "installs when you close the game" note after picking LATER
+  function toastLater() { laterT = 180; }
+  if (window.precipiceApp) window.precipiceApp.onUpdateReady((build) => UpdateBox.ready(build));
+
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { Input, Play, LEVELS, setScene, scenes: { AccountScene, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();
