@@ -33,6 +33,7 @@ function buildLevel(def) {
     ground: (x0, x1, top = 13) => fill(x0, x1, Y(top), R - 1, '#'),
     fill: fillY,
     plat: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), '='),
+    tile: (x, y, ch) => set(x, Y(y), ch), // any single tile (used by the level editor)
     // wooden platform you can jump up through and land on (DOWN drops through)
     thru: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), '-'),
     crumble: (x, y, w = 1) => fill(x, x + w - 1, Y(y), Y(y), 'c'),

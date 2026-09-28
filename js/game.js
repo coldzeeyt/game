@@ -45,7 +45,7 @@
   let lastSize = '';
 
   // ---------------------------------------------------------------- input
-  const Input = { down: new Set(), pressed: new Set(), typed: [], any: false, mouse: { x: -1, y: -1, click: false, moved: false } };
+  const Input = { down: new Set(), pressed: new Set(), typed: [], any: false, mouse: { x: -1, y: -1, click: false, moved: false, left: false, right: false, wheel: 0 } };
   const NO_SCROLL = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   addEventListener('keydown', (e) => {
     if (NO_SCROLL.has(e.code)) e.preventDefault();
@@ -66,9 +66,13 @@
   canvas.addEventListener('mousedown', (e) => {
     toCanvas(e);
     Sound.init();
-    Input.mouse.click = true;
+    if (e.button === 2) { Input.mouse.right = true; Input.mouse.rclick = true; } // right button (the editor erases with it)
+    else { Input.mouse.click = true; Input.mouse.left = true; }
     Input.any = true;
   });
+  addEventListener('mouseup', (e) => { if (e.button === 2) Input.mouse.right = false; else Input.mouse.left = false; });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('wheel', (e) => { Input.mouse.wheel += Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
 
   const hit = (...codes) => codes.some((c) => Input.pressed.has(c));
   const held = (...codes) => codes.some((c) => Input.down.has(c));
@@ -423,6 +427,7 @@
       if (Slots.any()) items.push({ id: 'load', label: 'LOAD GAME' });
       items.push(
         { id: 'tutorial', label: 'TUTORIAL' },
+        ...(IS_TOUCH ? [] : [{ id: 'editor', label: 'LEVEL EDITOR' }]), // PC only: it needs a mouse
         { id: 'guide', label: 'GUIDE' },
         { id: 'lore', label: 'LORE' },
         { id: 'settings', label: 'SETTINGS' },
@@ -514,6 +519,7 @@
       else if (c.id === 'more') setScene(More);
       else if (c.id === 'new') setScene(SlotSelect, 'new');
       else if (c.id === 'tutorial') startLevel(LEVELS.tutorial);
+      else if (c.id === 'editor') setScene(MyLevels);
       else if (c.id === 'settings') setScene(Settings);
       else if (c.id === 'credits') setScene(Credits);
     },
@@ -990,6 +996,424 @@
       });
       drawText(ctx, this.status, W / 2, 214, this.status.startsWith('LIVE') || this.status === 'CLEARED' ? PAL.G : PAL.e, 1, 'center');
       drawText(ctx, IS_TOUCH ? 'TAP A BOX TO TYPE' : 'UP/DOWN: PICK   LEFT/RIGHT: SHOW   ENTER: NEXT / PUBLISH', W / 2, 232, PAL.n, 1, 'center');
+    },
+  };
+
+  // ---------------------------------------------------------------- level editor (2.0, PC only)
+  // Your own stages: paint tiles, place objects, test-play with T, save to MY LEVELS,
+  // and share a level as a code. Levels are kept in precipice.levels (so they ride
+  // along in cloud saves too).
+  const EDIT_TOOLS = [
+    { id: '#', name: 'GROUND' }, { id: '=', name: 'BRICK' }, { id: '-', name: 'WOOD (JUMP-THROUGH)' },
+    { id: 'c', name: 'CRUMBLE' }, { id: '^', name: 'SPIKES' }, { id: 'i', name: 'ICE' }, { id: 'H', name: 'LADDER' },
+    { id: 'G', name: 'LOCKED GATE' }, { id: 'B', name: 'BLUE BLOCK' }, { id: 'R', name: 'RED BLOCK' },
+    { id: 'start', name: 'START', obj: true }, { id: 'flag', name: 'FLAG (GOAL)', obj: true },
+    { id: 'checkpoint', name: 'CHECKPOINT', obj: true }, { id: 'spring', name: 'SPRING', obj: true },
+    { id: 'crystal', name: 'DASH CRYSTAL', obj: true }, { id: 'ember', name: 'EMBER', obj: true },
+    { id: 'key', name: 'KEY', obj: true }, { id: 'orb', name: 'SWITCH ORB', obj: true },
+    { id: 'mover', name: 'MOVING PLATFORM', obj: true }, { id: '.', name: 'ERASER' },
+  ];
+  const MyLevelsStore = {
+    key: 'precipice.levels', MAX: 20,
+    all() { try { const l = JSON.parse(localStorage.getItem(this.key)); return Array.isArray(l) ? l : []; } catch (e) { return []; } },
+    write(list) { try { localStorage.setItem(this.key, JSON.stringify(list)); return true; } catch (e) { return false; } },
+    blank(n) {
+      const w = 60, h = 17;
+      const rows = [];
+      for (let y = 0; y < h; y++) rows.push((y >= h - 2 ? '#' : '.').repeat(w));
+      return { name: 'MY LEVEL ' + n, w, h, rows, obj: [], start: [2, h - 3], flag: [w - 4, h - 3] };
+    },
+  };
+  // share codes: PRC1: + base64 of the level with run-length encoded rows
+  const LevelCode = {
+    encode(lv) {
+      const rle = (row) => row.replace(/(.)\1*/g, (m, c) => (m.length > 1 ? m.length : '') + c);
+      const data = { n: lv.name, w: lv.w, h: lv.h, r: lv.rows.map(rle), o: lv.obj, s: lv.start, f: lv.flag };
+      return 'PRC1:' + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    },
+    decode(code) {
+      const m = /PRC1:([A-Za-z0-9+/=]+)/.exec(String(code || '').replace(/\s/g, ''));
+      if (!m) throw new Error('THAT IS NOT A LEVEL CODE');
+      const d = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+      const un = (row) => row.replace(/(\d+)(.)/g, (x, n, c) => c.repeat(+n));
+      const w = clamp(d.w | 0, 20, 400), h = clamp(d.h | 0, 17, 80);
+      const ok = new Set(EDIT_TOOLS.filter((t) => !t.obj).map((t) => t.id));
+      const rows = [];
+      for (let y = 0; y < h; y++) {
+        const row = un(String((d.r || [])[y] || '')).padEnd(w, '.').slice(0, w);
+        rows.push([...row].map((c) => (ok.has(c) ? c : '.')).join(''));
+      }
+      const pt = (p) => (Array.isArray(p) ? [clamp(p[0] | 0, 0, w - 1), clamp(p[1] | 0, 0, h - 1)] : null);
+      const types = new Set(['checkpoint', 'spring', 'crystal', 'ember', 'key', 'orb', 'mover']);
+      const obj = (Array.isArray(d.o) ? d.o : []).filter((o) => Array.isArray(o) && types.has(o[0])).slice(0, 300)
+        .map((o) => [o[0], clamp(o[1] | 0, 0, w - 1), clamp(o[2] | 0, 0, h - 1)].concat(o[0] === 'mover' ? [clamp(o[3] | 0, 0, w - 3)] : []));
+      return { name: String(d.n || 'SHARED LEVEL').toUpperCase().slice(0, 20), w, h, rows, obj, start: pt(d.s), flag: pt(d.f) };
+    },
+  };
+  // A level from the editor, ready for Play.
+  function customDef(lv, fromEditor) {
+    return {
+      id: 'custom', name: lv.name, objective: 'REACH THE FLAG', custom: true, fromEditor,
+      width: lv.w, rows: lv.h,
+      build(b) {
+        const at = (row) => row - OFF;
+        lv.rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] !== '.') b.tile(x, at(y), row[x]); });
+        if (lv.start) b.start(lv.start[0], at(lv.start[1]));
+        if (lv.flag) b.flag(lv.flag[0], at(lv.flag[1]));
+        for (const [t, x, y, x1] of lv.obj) {
+          if (t === 'mover') b.mover(Math.min(x, x1), Math.max(x, x1), at(y));
+          else if (b[t]) b[t](x, at(y));
+        }
+      },
+    };
+  }
+  function copyText(text) {
+    try { if (navigator.clipboard) return navigator.clipboard.writeText(text).then(() => true, () => false); } catch (e) { /* no clipboard */ }
+    return Promise.resolve(false);
+  }
+  function pasteText() {
+    try { if (navigator.clipboard && navigator.clipboard.readText) return navigator.clipboard.readText(); } catch (e) { /* no clipboard */ }
+    return Promise.reject(new Error('NO CLIPBOARD'));
+  }
+
+  const TOOLBAR = 22, STATUSBAR = 18;
+  const Editor = {
+    // enter(slot) opens a saved level (or a new one with slot = -1); enter('back') returns from a test
+    enter(slot) {
+      this.t = 0;
+      if (slot === 'back') return;
+      const list = MyLevelsStore.all();
+      this.slot = slot;
+      this.lv = slot >= 0 && list[slot] ? JSON.parse(JSON.stringify(list[slot])) : MyLevelsStore.blank(list.length + 1);
+      this.tool = 0; this.camX = 0; this.camY = Math.max(0, this.lv.h * T - (H - TOOLBAR - STATUSBAR));
+      this.dirty = slot < 0; this.msg = slot < 0 ? 'NEW LEVEL! PAINT WITH THE LEFT MOUSE BUTTON' : ''; this.msgT = 240;
+      this.naming = false; this.menu = null; this.hover = null;
+    },
+    say(m) { this.msg = m; this.msgT = 180; },
+    save() {
+      const list = MyLevelsStore.all();
+      if (this.slot >= 0 && this.slot < list.length) list[this.slot] = this.lv;
+      else {
+        if (list.length >= MyLevelsStore.MAX) { this.say('MY LEVELS IS FULL (' + MyLevelsStore.MAX + '). DELETE ONE FIRST'); return false; }
+        list.push(this.lv); this.slot = list.length - 1;
+      }
+      if (!MyLevelsStore.write(list)) { this.say('COULD NOT SAVE'); return false; }
+      this.dirty = false; this.say('SAVED'); Sound.sfx('check');
+      return true;
+    },
+    test() {
+      if (!this.lv.start) { this.say('PLACE THE START FIRST'); Sound.sfx('die'); return; }
+      if (!this.lv.flag) { this.say('PLACE THE FLAG FIRST'); Sound.sfx('die'); return; }
+      Sound.sfx('select');
+      startLevel(customDef(this.lv, true));
+    },
+    cellAt(mx, my) {
+      if (my < TOOLBAR || my >= H - STATUSBAR) return null;
+      const tx = Math.floor((mx + this.camX) / T), ty = Math.floor((my - TOOLBAR + this.camY) / T);
+      return tx >= 0 && ty >= 0 && tx < this.lv.w && ty < this.lv.h ? [tx, ty] : null;
+    },
+    setTile(x, y, ch) {
+      const row = this.lv.rows[y];
+      if (row[x] === ch) return;
+      this.lv.rows[y] = row.slice(0, x) + ch + row.slice(x + 1);
+      this.dirty = true;
+    },
+    objAt(x, y) { return this.lv.obj.findIndex((o) => o[1] === x && o[2] === y); },
+    erase(x, y) {
+      const i = this.objAt(x, y);
+      if (i >= 0) { this.lv.obj.splice(i, 1); this.dirty = true; return; }
+      if (this.lv.start && this.lv.start[0] === x && this.lv.start[1] === y) { this.lv.start = null; this.dirty = true; return; }
+      if (this.lv.flag && this.lv.flag[0] === x && this.lv.flag[1] === y) { this.lv.flag = null; this.dirty = true; return; }
+      this.setTile(x, y, '.');
+    },
+    place(x, y, fresh) {
+      const tool = EDIT_TOOLS[this.tool];
+      if (tool.id === '.') { this.erase(x, y); return; }
+      if (!tool.obj) { this.setTile(x, y, tool.id); return; }
+      if (!fresh) return; // objects go down one per click
+      if (tool.id === 'start') { this.lv.start = [x, y]; this.setTile(x, y, '.'); }
+      else if (tool.id === 'flag') { this.lv.flag = [x, y]; this.setTile(x, y, '.'); }
+      else {
+        const i = this.objAt(x, y);
+        if (i >= 0) this.lv.obj.splice(i, 1);
+        if (this.lv.obj.length >= 300) { this.say('TOO MANY OBJECTS'); return; }
+        this.lv.obj.push(tool.id === 'mover' ? ['mover', x, y, Math.min(this.lv.w - 3, x + 6)] : [tool.id, x, y]);
+      }
+      this.dirty = true;
+      Sound.sfx('move');
+    },
+    resize(dw, dh) {
+      const lv = this.lv;
+      const w = clamp(lv.w + dw, 20, 400), h = clamp(lv.h + dh, 17, 80);
+      if (w === lv.w && h === lv.h) return;
+      // width grows/shrinks on the right; height grows/shrinks at the top (the ground stays put)
+      let rows = lv.rows.map((r) => (w > r.length ? r + '.'.repeat(w - r.length) : r.slice(0, w)));
+      const addTop = h - lv.h;
+      if (addTop > 0) rows = Array.from({ length: addTop }, () => '.'.repeat(w)).concat(rows);
+      else rows = rows.slice(-addTop);
+      const shift = (p) => (p ? [p[0], p[1] + addTop] : p);
+      lv.obj = lv.obj.map((o) => [o[0], o[1], o[2] + addTop].concat(o.slice(3))).filter((o) => o[1] < w && o[2] >= 0 && o[2] < h);
+      lv.start = shift(lv.start); lv.flag = shift(lv.flag);
+      if (lv.start && (lv.start[0] >= w || lv.start[1] < 0)) lv.start = null;
+      if (lv.flag && (lv.flag[0] >= w || lv.flag[1] < 0)) lv.flag = null;
+      lv.rows = rows; lv.w = w; lv.h = h;
+      this.camY += addTop * T;
+      this.dirty = true;
+      this.say('SIZE ' + w + ' X ' + h);
+    },
+    menuItems() {
+      return [{ id: 'resume', label: 'KEEP EDITING' }, { id: 'save', label: 'SAVE' }, { id: 'test', label: 'TEST PLAY (T)' },
+        { id: 'code', label: 'COPY SHARE CODE' }, { id: 'rename', label: 'RENAME' }, { id: 'exit', label: this.dirty ? 'SAVE & EXIT' : 'EXIT' },
+        { id: 'discard', label: 'EXIT WITHOUT SAVING' }];
+    },
+    update() {
+      this.t++;
+      if (this.msgT > 0) this.msgT--;
+      // renaming: type the new name
+      if (this.naming) {
+        let n = this.lv.name;
+        for (const ch of Input.typed) { const c = ch.toUpperCase(); if ((c === ' ' || FONT[c]) && n.length < 20) n += c; }
+        if (hit('Backspace')) n = n.slice(0, -1);
+        this.lv.name = n;
+        if (hit('Enter', 'NumpadEnter', 'Escape')) { this.naming = false; if (!this.lv.name.trim()) this.lv.name = 'MY LEVEL'; this.dirty = true; Sound.sfx('select'); }
+        return;
+      }
+      if (this.menu) {
+        if (hit('Escape')) { this.menu = null; return; }
+        const c = this.menu.update();
+        if (!c) return;
+        this.menu = null;
+        if (c.id === 'save') this.save();
+        else if (c.id === 'test') this.test();
+        else if (c.id === 'rename') { this.naming = true; }
+        else if (c.id === 'code') copyText(LevelCode.encode(this.lv)).then((ok) => this.say(ok ? 'CODE COPIED! PASTE IT TO A FRIEND' : 'COULD NOT COPY'));
+        else if (c.id === 'exit') { if (!this.dirty || this.save()) setScene(MyLevels); }
+        else if (c.id === 'discard') setScene(MyLevels);
+        return;
+      }
+      if (hit('Escape')) { this.menu = makeMenu(this.menuItems(), 70, 16); Sound.sfx('pause'); return; }
+      if (hit('KeyT')) { this.test(); return; }
+      if (hit('KeyS') && (held('ControlLeft', 'ControlRight', 'MetaLeft') || true)) { this.save(); return; }
+      if (hit('KeyN')) { this.naming = true; return; }
+      // tools: number keys, Q/E, mouse on the toolbar
+      for (let i = 0; i < 10; i++) if (hit('Digit' + ((i + 1) % 10))) this.tool = i;
+      if (hit('KeyQ')) this.tool = (this.tool + EDIT_TOOLS.length - 1) % EDIT_TOOLS.length;
+      if (hit('KeyE')) this.tool = (this.tool + 1) % EDIT_TOOLS.length;
+      // size: +/- width, [ ] height
+      if (hit('Equal', 'NumpadAdd')) this.resize(10, 0);
+      if (hit('Minus', 'NumpadSubtract')) this.resize(-10, 0);
+      if (hit('BracketRight')) this.resize(0, 5);
+      if (hit('BracketLeft')) this.resize(0, -5);
+      // camera: arrows / WASD, wheel scrolls sideways (shift: up/down)
+      const sp = held('ShiftLeft', 'ShiftRight') ? 8 : 4;
+      const viewH = H - TOOLBAR - STATUSBAR;
+      if (held('ArrowLeft', 'KeyA')) this.camX -= sp;
+      if (held('ArrowRight', 'KeyD')) this.camX += sp;
+      if (held('ArrowUp', 'KeyW')) this.camY -= sp;
+      if (held('ArrowDown')) this.camY += sp;
+      const m = Input.mouse;
+      if (m.wheel) { if (held('ShiftLeft', 'ShiftRight')) this.camY += m.wheel * 32; else this.camX += m.wheel * 32; }
+      this.camX = clamp(this.camX, 0, Math.max(0, this.lv.w * T - W));
+      this.camY = clamp(this.camY, 0, Math.max(0, this.lv.h * T - viewH));
+      // toolbar clicks
+      if (m.click && m.y < TOOLBAR) {
+        const i = Math.floor((m.x - 4) / 20);
+        if (i >= 0 && i < EDIT_TOOLS.length) { this.tool = i; Sound.sfx('move'); }
+        else if (m.x > W - 44) this.test();
+        return;
+      }
+      // paint / erase (a quick click counts too, and a drag fills every square along the way)
+      this.hover = this.cellAt(m.x, m.y);
+      const erasing = m.right || m.rclick, painting = m.left || m.click;
+      if (this.hover && (erasing || painting)) {
+        const [x, y] = this.hover;
+        const from = this.last && (m.click || m.rclick) === false ? this.last : [x, y];
+        const steps = Math.max(Math.abs(x - from[0]), Math.abs(y - from[1]));
+        for (let k = 0; k <= steps; k++) {
+          const cx = Math.round(from[0] + ((x - from[0]) * k) / (steps || 1)), cy = Math.round(from[1] + ((y - from[1]) * k) / (steps || 1));
+          if (erasing) this.erase(cx, cy); else this.place(cx, cy, m.click && k === steps);
+        }
+        this.last = [x, y];
+      } else this.last = null;
+    },
+    drawWorld() {
+      const lv = this.lv, viewH = H - TOOLBAR - STATUSBAR;
+      const isG = (x, y) => y >= lv.h || (x >= 0 && x < lv.w && y >= 0 && lv.rows[y][x] === '#');
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, TOOLBAR, W, viewH); ctx.clip();
+      ctx.translate(-Math.round(this.camX), TOOLBAR - Math.round(this.camY));
+      const tx0 = Math.floor(this.camX / T), ty0 = Math.floor(this.camY / T);
+      // outside the level
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(lv.w * T, 0, W, lv.h * T);
+      for (let ty = ty0; ty <= ty0 + Math.ceil(viewH / T) + 1 && ty < lv.h; ty++) {
+        for (let tx = tx0; tx <= tx0 + Math.ceil(W / T) + 1 && tx < lv.w; tx++) {
+          const c = lv.rows[ty][tx], px = tx * T, py = ty * T;
+          if (c === '#') drawGround(px, py, tx, ty, isG);
+          else if (c === '=') ctx.drawImage(TILES.brick, px, py);
+          else if (c === 'c') ctx.drawImage(TILES.crumble, px, py);
+          else if (c === '^') ctx.drawImage(TILES.spike, px, py);
+          else if (c === 'i') ctx.drawImage(TILES.ice, px, py);
+          else if (c === 'H') ctx.drawImage(TILES.ladder, px, py);
+          else if (c === '-') Play.drawThru(px, py, lv.rows[ty][tx - 1] !== '-', lv.rows[ty][tx + 1] !== '-');
+          else if (c === 'G') Play.drawGateTile(px, py, ty + 1 >= lv.h || lv.rows[ty + 1][tx] !== 'G', ty === 0 || lv.rows[ty - 1][tx] !== 'G');
+          else if (c === 'B' || c === 'R') Play.drawSwitchBlock(px, py, c, c === 'R');
+        }
+      }
+      // grid
+      ctx.fillStyle = 'rgba(164,228,252,0.07)';
+      for (let tx = tx0; tx <= tx0 + W / T + 1 && tx <= lv.w; tx++) ctx.fillRect(tx * T, ty0 * T, 1, viewH + T);
+      for (let ty = ty0; ty <= ty0 + viewH / T + 1 && ty <= lv.h; ty++) ctx.fillRect(tx0 * T, ty * T, W + T, 1);
+      // objects
+      for (const [t, x, y, x1] of lv.obj) {
+        if (t === 'checkpoint') ctx.drawImage(CHECKPOINT_SPR.off, x * T, y * T - 8);
+        else if (t === 'spring') Play.drawSpring({ x, y, t: 0 });
+        else if (t === 'crystal') Play.drawCrystal({ x, y, gone: 0 });
+        else if (t === 'ember') Play.drawEmber({ x, y });
+        else if (t === 'key') Play.drawKey(x * T + 8, y * T + 8);
+        else if (t === 'orb') Play.drawOrb(x * T + 8, y * T + 8);
+        else if (t === 'mover') {
+          ctx.fillStyle = 'rgba(248,184,0,0.35)';
+          for (let px = x * T; px < x1 * T + 48; px += 4) ctx.fillRect(px, y * T + 3, 2, 1);
+          Play.drawMover({ x: x * T, y: y * T, w: 48, h: 8 });
+        }
+      }
+      if (lv.flag) Play.drawFlag({ x: lv.flag[0], y: lv.flag[1] });
+      if (lv.start) ctx.drawImage(PLAYER_SPR.dash.idle.right, lv.start[0] * T + 2, lv.start[1] * T);
+      // cursor
+      if (this.hover && !this.menu) {
+        const [x, y] = this.hover;
+        ctx.fillStyle = Input.mouse.right || EDIT_TOOLS[this.tool].id === '.' ? 'rgba(252,60,60,0.5)' : 'rgba(252,252,252,0.5)';
+        ctx.fillRect(x * T, y * T, T, 1); ctx.fillRect(x * T, y * T + T - 1, T, 1); ctx.fillRect(x * T, y * T, 1, T); ctx.fillRect(x * T + T - 1, y * T, 1, T);
+      }
+      ctx.restore();
+    },
+    drawToolIcon(tool, x, y) {
+      const id = tool.id;
+      ctx.save(); ctx.beginPath(); ctx.rect(x, y, 16, 16); ctx.clip();
+      if (id === '#') ctx.drawImage(TILES.grass, x, y);
+      else if (id === '=') ctx.drawImage(TILES.brick, x, y);
+      else if (id === 'c') ctx.drawImage(TILES.crumble, x, y);
+      else if (id === '^') ctx.drawImage(TILES.spike, x, y);
+      else if (id === 'i') ctx.drawImage(TILES.ice, x, y);
+      else if (id === 'H') ctx.drawImage(TILES.ladder, x, y);
+      else if (id === '-') Play.drawThru(x, y + 5, true, true);
+      else if (id === 'G') Play.drawGateTile(x, y, false, false);
+      else if (id === 'B' || id === 'R') Play.drawSwitchBlock(x, y, id, true);
+      else if (id === 'start') ctx.drawImage(PLAYER_SPR.dash.idle.right, x + 2, y);
+      else if (id === 'flag') { ctx.fillStyle = PAL.l; ctx.fillRect(x + 4, y + 1, 2, 15); ctx.fillStyle = PAL.G; ctx.fillRect(x + 6, y + 2, 8, 6); }
+      else if (id === 'checkpoint') ctx.drawImage(CHECKPOINT_SPR.on, x, y - 6);
+      else if (id === 'spring') Play.drawSpring({ x: x / T, y: y / T, t: 0 });
+      else if (id === 'crystal') Play.drawCrystal({ x: x / T, y: y / T, gone: 0 });
+      else if (id === 'ember') Play.drawEmber({ x: x / T, y: y / T });
+      else if (id === 'key') Play.drawKey(x + 8, y + 8);
+      else if (id === 'orb') Play.drawOrb(x + 8, y + 8);
+      else if (id === 'mover') Play.drawMover({ x, y: y + 5, w: 16, h: 6 });
+      else if (id === '.') { ctx.fillStyle = '#fc7460'; for (let i = 3; i < 13; i++) { ctx.fillRect(x + i, y + i, 2, 1); ctx.fillRect(x + 15 - i, y + i, 2, 1); } }
+      ctx.restore();
+    },
+    draw() {
+      drawBackground(ctx, this.camX * 0.3, frame);
+      this.drawWorld();
+      // toolbar
+      ctx.fillStyle = 'rgba(8,6,28,0.95)'; ctx.fillRect(0, 0, W, TOOLBAR);
+      ctx.fillStyle = '#342468'; ctx.fillRect(0, TOOLBAR - 1, W, 1);
+      EDIT_TOOLS.forEach((tool, i) => {
+        const x = 4 + i * 20, y = 3, sel = i === this.tool;
+        if (sel) { ctx.fillStyle = PAL.y; ctx.fillRect(x - 2, y - 2, 20, 20); ctx.fillStyle = '#0c0828'; ctx.fillRect(x - 1, y - 1, 18, 18); }
+        this.drawToolIcon(tool, x, y);
+      });
+      drawButton({ x: W - 42, y: 4, w: 38, h: 14 }, 'TEST', false);
+      // status bar
+      ctx.fillStyle = 'rgba(8,6,28,0.95)'; ctx.fillRect(0, H - STATUSBAR, W, STATUSBAR);
+      ctx.fillStyle = '#342468'; ctx.fillRect(0, H - STATUSBAR, W, 1);
+      const lv = this.lv;
+      drawText(ctx, (this.naming ? 'NAME: ' + lv.name + (blink(15) ? '_' : ' ') : lv.name + (this.dirty ? ' *' : '')), 4, H - 13, this.naming ? PAL.y : PAL.w);
+      drawText(ctx, EDIT_TOOLS[this.tool].name, W / 2 - 20, H - 13, PAL.y, 1, 'center');
+      const pos = this.hover ? this.hover[0] + ',' + this.hover[1] : '';
+      drawText(ctx, lv.w + 'X' + lv.h + '  ' + pos, W - 4, H - 13, PAL.m, 1, 'right');
+      if (this.msgT > 0) drawTextOutlined(ctx, this.msg, W / 2, TOOLBAR + 6, PAL.y, 1, 'center');
+      else if (this.t < 900 && !this.menu) drawText(ctx, 'LEFT: PAINT  RIGHT: ERASE  1-0/Q/E: TOOL  WASD: SCROLL  T: TEST  S: SAVE', W / 2, TOOLBAR + 6, 'rgba(184,196,240,0.7)', 1, 'center');
+      if (this.menu) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
+        panel(W / 2 - 100, 50, 200, 140, PAL.y);
+        drawTextOutlined(ctx, 'EDITOR', W / 2, 56, PAL.y, 1, 'center');
+        this.menu.draw();
+        drawText(ctx, '+/-: WIDTH   [ ]: HEIGHT   N: RENAME', W / 2, 180, PAL.n, 1, 'center');
+      }
+    },
+  };
+
+  // MY LEVELS: your saved levels, plus NEW and PASTE CODE.
+  const MyLevels = {
+    enter() { this.t = 0; this.index = 0; this.sub = null; this.msg = ''; this.confirm = false; this.list = MyLevelsStore.all(); },
+    rows() { return [{ id: 'new', label: '+ NEW LEVEL' }, { id: 'paste', label: 'PASTE A LEVEL CODE' }].concat(this.list.map((lv, i) => ({ id: 'lv', i, label: lv.name }))).concat([{ id: 'back', label: 'BACK' }]); },
+    update() {
+      titleUpdate();
+      this.t++;
+      if (this.sub) {
+        if (hit(...K.back)) { this.sub = null; this.confirm = false; return; }
+        const c = this.sub.menu.update();
+        if (!c) return;
+        const i = this.sub.i, lv = this.list[i];
+        if (c.id === 'edit') setScene(Editor, i);
+        else if (c.id === 'play') { if (!lv.start || !lv.flag) { this.msg = 'THIS LEVEL NEEDS A START AND A FLAG'; this.sub = null; return; } startLevel(customDef(lv, false)); }
+        else if (c.id === 'code') copyText(LevelCode.encode(lv)).then((ok) => { this.msg = ok ? 'CODE COPIED! SEND IT TO A FRIEND' : 'COULD NOT COPY'; });
+        else if (c.id === 'delete') {
+          if (!this.confirm) { this.confirm = true; this.sub.menu.items[3].label = 'DELETE: SURE?'; return; }
+          this.list.splice(i, 1); MyLevelsStore.write(this.list); this.msg = 'DELETED'; this.index = 0;
+        }
+        this.sub = null; this.confirm = false;
+        return;
+      }
+      const rows = this.rows(), n = rows.length;
+      if (hit(...K.up)) { this.index = (this.index + n - 1) % n; Sound.sfx('move'); }
+      if (hit(...K.down)) { this.index = (this.index + 1) % n; Sound.sfx('move'); }
+      if (hit(...K.back)) { Sound.sfx('select'); setScene(Title); return; }
+      const m = Input.mouse;
+      let chosen = hit(...K.ok);
+      if (m.moved || m.click) rows.forEach((r, i) => {
+        const y = 56 + i * 13;
+        if (m.y < y - 3 || m.y > y + 9 || Math.abs(m.x - W / 2) > 150) return;
+        this.index = i; if (m.click) chosen = true;
+      });
+      if (!chosen) return;
+      Sound.sfx('select');
+      const r = rows[this.index];
+      if (r.id === 'back') setScene(Title);
+      else if (r.id === 'new') {
+        if (this.list.length >= MyLevelsStore.MAX) { this.msg = 'MY LEVELS IS FULL. DELETE ONE FIRST'; return; }
+        setScene(Editor, -1);
+      } else if (r.id === 'paste') {
+        pasteText().then((text) => {
+          const lv = LevelCode.decode(text);
+          if (this.list.length >= MyLevelsStore.MAX) throw new Error('MY LEVELS IS FULL');
+          this.list.push(lv); MyLevelsStore.write(this.list);
+          this.msg = 'ADDED: ' + lv.name; Sound.sfx('check');
+        }).catch((e) => { this.msg = e.message === 'NO CLIPBOARD' ? 'COPY A LEVEL CODE FIRST, THEN TRY AGAIN' : e.message.toUpperCase().slice(0, 44); });
+      } else {
+        this.sub = { i: r.i, menu: makeMenu([{ id: 'edit', label: 'EDIT' }, { id: 'play', label: 'PLAY' }, { id: 'code', label: 'COPY SHARE CODE' }, { id: 'delete', label: 'DELETE' }], 104, 16) };
+      }
+    },
+    draw() {
+      drawTitleBackdrop();
+      panel(W / 2 - 170, 10, 340, 250, PAL.C);
+      drawTextOutlined(ctx, 'MY LEVELS', W / 2, 18, PAL.C, 2, 'center');
+      drawText(ctx, this.list.length + '/' + MyLevelsStore.MAX + ' LEVELS', W / 2, 38, PAL.m, 1, 'center');
+      this.rows().slice(0, 15).forEach((r, i) => {
+        const y = 56 + i * 13, sel = i === this.index && !this.sub;
+        if (sel) { ctx.fillStyle = 'rgba(60,188,252,0.12)'; ctx.fillRect(W / 2 - 150, y - 3, 300, 12); }
+        const col = r.id === 'lv' ? PAL.w : r.id === 'back' ? '#b8c4f0' : PAL.y;
+        drawText(ctx, (sel ? '> ' : '') + r.label + (sel ? ' <' : ''), W / 2, y, sel ? PAL.c : col, 1, 'center');
+        if (r.id === 'lv') { const lv = this.list[r.i]; drawText(ctx, lv.w + 'X' + lv.h, W / 2 + 146, y, PAL.n, 1, 'right'); }
+      });
+      if (this.msg) drawText(ctx, this.msg, W / 2, 244, PAL.y, 1, 'center');
+      if (this.sub) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
+        panel(W / 2 - 90, 84, 180, 90, PAL.y);
+        drawTextOutlined(ctx, this.list[this.sub.i].name, W / 2, 90, PAL.y, 1, 'center');
+        this.sub.menu.draw();
+      }
     },
   };
 
@@ -1503,6 +1927,18 @@
 
   // What's new, newest first (Credits > Changelog).
   const CHANGELOG = [
+    { title: 'UPDATE 2.0', text: [
+      'THE LEVEL EDITOR', '',
+      '- LEVEL EDITOR (TITLE SCREEN, PC ONLY): BUILD YOUR',
+      '  OWN STAGES WITH GROUND, BRICKS, WOOD, SPIKES, ICE,',
+      '  LADDERS, GATES, SWITCH BLOCKS AND MORE',
+      '- PLACE THE START, FLAG, CHECKPOINTS, SPRINGS,',
+      '  CRYSTALS, EMBERS, KEYS, ORBS AND MOVING PLATFORMS',
+      '- TEST PLAY WITH ONE KEY (T)',
+      '- MY LEVELS: SAVE UP TO 20 (THEY RIDE ALONG IN YOUR',
+      '  CLOUD SAVE)',
+      '- SHARE A LEVEL AS A CODE, OR PASTE A FRIEND\'S',
+    ] },
     { title: 'UPDATE 1.9', text: [
       'ONLY UP, NOTES & MESSAGES', '',
       '- ONLY UP (IN MORE): ONE HUGE TOWER, NO',
@@ -2509,7 +2945,8 @@
       this.motes = Array.from({ length: 70 }, () => ({
         x: Math.random() * W, y: Math.random() * H, v: 0.15 + Math.random() * 0.3, p: Math.random() * 6.28,
       }));
-      this.pauseMenu = makeMenu([{ id: 'resume', label: 'RESUME' }, { id: 'quit', label: net ? 'LEAVE RACE' : 'QUIT TO TITLE' }], 140);
+      const quitLabel = net ? 'LEAVE RACE' : def.fromEditor ? 'BACK TO THE EDITOR' : def.custom ? 'BACK TO MY LEVELS' : 'QUIT TO TITLE';
+      this.pauseMenu = makeMenu([{ id: 'resume', label: 'RESUME' }, { id: 'quit', label: quitLabel }], 140);
       this.toast = 0;
       this.orbs = [];
       const info = def.bossInfo;
@@ -2584,6 +3021,8 @@
     },
 
     quit() {
+      if (this.def.fromEditor) { setScene(Editor, 'back'); return; } // test play: straight back to editing
+      if (this.def.custom) { Sound.playMusic(true); setScene(MyLevels); return; }
       if (this.onlyUp) this.saveOnlyUp();
       this.saveProgress();
       toTitle();
@@ -2606,6 +3045,8 @@
 
     nextAfterClear() {
       if (this.netOn) { Net.backToRoom(); Sound.playMusic(true); setScene(Room); return; }
+      if (this.def.fromEditor) { setScene(Editor, 'back'); return; }
+      if (this.def.custom) { Sound.playMusic(true); setScene(MyLevels); return; }
       if (!this.run) { toTitle(); return; }
       const d = this.run.data;
       if (d.done) { setScene(Ending, this.run); return; }
@@ -3865,6 +4306,15 @@
       }
       const L = this.level;
       const tut = L.id === 'tutorial';
+      if (this.def.custom) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
+        panel(W / 2 - 110, 70, 220, 110, PAL.y);
+        drawTextOutlined(ctx, 'LEVEL CLEAR!', W / 2, 84, PAL.y, 2, 'center');
+        drawText(ctx, L.name, W / 2, 110, PAL.C, 1, 'center');
+        drawText(ctx, 'TIME ' + formatTime(this.time) + '   DEATHS ' + this.deaths, W / 2, 124, PAL.w, 1, 'center');
+        if (this.clearT > 60 && blink(20)) drawText(ctx, this.def.fromEditor ? 'ENTER: BACK TO THE EDITOR' : 'ENTER: BACK TO MY LEVELS', W / 2, 160, PAL.w, 1, 'center');
+        return;
+      }
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(0, 0, W, H);
       panel(W / 2 - 110, 59, 220, 152);
@@ -3928,6 +4378,8 @@
       Input.typed.length = 0;
       Input.mouse.click = false;
       Input.mouse.moved = false;
+      Input.mouse.wheel = 0;
+      Input.mouse.rclick = false;
       Input.any = false;
       acc -= STEP;
     }
@@ -4034,7 +4486,7 @@
   });
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Announce, Players, Chat, Inbox, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { LevelCode, MyLevelsStore, customDef, UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Editor, MyLevels, Announce, Players, Chat, Inbox, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

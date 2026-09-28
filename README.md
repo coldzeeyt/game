@@ -167,6 +167,11 @@ begins, so you can leave between chapters but not mid-chapter.
 - **New Game**: pick a slot, then the backstory (Esc skips it)
 - **Load Game**: pick any of the 3 save slots
 - **Tutorial**: teaches every mechanic
+- **Level Editor** (PC only, 2.0): MY LEVELS lists your levels (up to 20) with NEW LEVEL and PASTE A LEVEL CODE.
+  In the editor: left mouse paints (drag to draw), right mouse erases, 1-0 / Q / E pick a tool (or click the
+  toolbar), WASD / arrows / mouse wheel scroll, +/- change the width, [ ] the height, T test-plays, S saves,
+  N renames, Esc opens the menu (save, test, copy share code, exit). Everything snaps to the 16x16 grid.
+  Share codes start with `PRC1:`
 - **Guide**: your goal, the collectables, everything on the mountain, and the controls
 - **Lore**: Mount Precipice, Ash, the memory fragments, the Watcher, and you; plus Wren, the Black Flame and what came after (these pages unlock as you reach that part of the story)
 - **Settings**: resolution, fullscreen, music/sound volume, and graphics presets from
