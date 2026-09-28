@@ -1223,9 +1223,12 @@
   // What's new, newest first (Credits > Changelog).
   const CHANGELOG = [
     { title: 'UPDATE 1.9', text: [
-      'NOTES & VERSIONS', '',
+      'ONLY UP, NOTES & VERSIONS', '',
+      '- ONLY UP (IN MORE): ONE HUGE TOWER, NO',
+      '  CHECKPOINTS. HOW HIGH CAN YOU GET?',
       '- DEV NOTES (TOP LEFT OF THE TITLE SCREEN):',
-      '  NEWS AND PLANS STRAIGHT FROM ColdzeeYT',
+      '  NEWS AND PLANS STRAIGHT FROM ColdzeeYT (REFRESH',
+      '  FOR THE LATEST)',
       '- CHECK FOR UPDATES ANY TIME IN SETTINGS',
       '  (WINDOWS APP)',
       '- THE UPDATE POPUP IS IN THE GAME\'S OWN STYLE',

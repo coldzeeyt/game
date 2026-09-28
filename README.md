@@ -176,7 +176,7 @@ begins, so you can leave between chapters but not mid-chapter.
 - **Stories** (top): Story 1 is Precipice; more storylines are coming (greyed out for now)
 - **Credits**, plus the **Changelog** (what's new in each update)
 - **Account** (bottom left): sign up / log in / log out, and save or load your saves in the cloud
-- **More** (bottom right): Hardcore mode, and **Multiplayer** (make a room and race your friends with its 4-letter code)
+- **More** (bottom right): Hardcore mode, **Only Up** (one 720 m tower, no checkpoints: your spot saves when you quit, best height is kept), and **Multiplayer** (make a room and race your friends with its 4-letter code)
 - Use LEFT / RIGHT on the menu to reach the two corner buttons
 
 ## Credits
