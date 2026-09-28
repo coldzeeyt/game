@@ -23,6 +23,27 @@ const MAX_MSG = 300; // characters per message
 const canTalk = (a, b) => a !== b && (a === DEV_USER || b === DEV_USER);
 const sent = new Map(); // name -> recent send times (flood control)
 
+// ---- published levels (the level editor's online browser)
+const LEVEL_TILES = new Set('.#=-c^iHGBR');
+const LEVEL_OBJS = new Set(['checkpoint', 'spring', 'crystal', 'ember', 'key', 'orb', 'mover']);
+const clampInt = (v, a, b) => Math.max(a, Math.min(b, Math.floor(Number(v)) || 0));
+// Checks a level from the editor and returns a clean copy (or null if it's broken).
+function cleanLevel(d) {
+  if (!d || typeof d !== 'object' || !Array.isArray(d.rows)) return null;
+  const w = clampInt(d.w, 20, 400), h = clampInt(d.h, 17, 80);
+  if (d.rows.length !== h) return null;
+  const rows = d.rows.map((r) => [...String(r).padEnd(w, '.').slice(0, w)].map((c) => (LEVEL_TILES.has(c) ? c : '.')).join(''));
+  const pt = (p) => (Array.isArray(p) ? [clampInt(p[0], 0, w - 1), clampInt(p[1], 0, h - 1)] : null);
+  const obj = (Array.isArray(d.obj) ? d.obj : []).filter((o) => Array.isArray(o) && LEVEL_OBJS.has(o[0])).slice(0, 300)
+    .map((o) => [o[0], clampInt(o[1], 0, w - 1), clampInt(o[2], 0, h - 1)].concat(o[0] === 'mover' ? [clampInt(o[3], 0, w - 3)] : []));
+  const start = pt(d.start), flag = pt(d.flag);
+  if (!start || !flag) return null;
+  const name = String(d.name || 'UNTITLED').toUpperCase().replace(/[^A-Z0-9 !?.,'&:()\-]/g, '').trim().slice(0, 20) || 'UNTITLED';
+  return { name, w, h, rows, obj, start, flag };
+}
+const levelInfo = (l) => ({ id: l.id, name: l.name, author: l.author, at: l.at, plays: l.plays || 0, featured: !!l.featured, w: l.data.w, h: l.data.h });
+const newLevelId = () => { let id; do id = crypto.randomBytes(3).toString('hex').toUpperCase(); while ((db.levels || []).some((l) => l.id === id)); return id; };
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 let db = { accounts: {} };
 try { db = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (e) { /* new server */ }
@@ -78,7 +99,7 @@ function send(res, code, body) {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   });
   res.end(JSON.stringify(body));
 }
@@ -128,6 +149,24 @@ async function handle(req, res) {
   if (route === 'GET /api/announce') { // public
     const a = db.announce || {};
     return send(res, 200, { popup: a.popup || null, banner: a.banner || '' });
+  }
+  // Browse published levels: ?list=recent|featured and/or ?q=search (public)
+  if (route === 'GET /api/levels') {
+    const q = String(url.searchParams.get('q') || '').toUpperCase().trim();
+    const list = url.searchParams.get('list') || 'recent';
+    let ls = (db.levels || []).slice();
+    if (q) ls = ls.filter((l) => l.name.includes(q) || l.author.includes(q) || l.id === q);
+    if (list === 'featured') ls = ls.filter((l) => l.featured);
+    ls.sort((a, b) => b.at - a.at);
+    return send(res, 200, { levels: ls.slice(0, 40).map(levelInfo) });
+  }
+  const lm = /^\/api\/levels\/([0-9A-F]{6})(\/star)?$/.exec(url.pathname);
+  if (lm && req.method === 'GET' && !lm[2]) { // one level, to play it (public)
+    const l = (db.levels || []).find((x) => x.id === lm[1]);
+    if (!l) return send(res, 404, { error: 'THAT LEVEL IS GONE' });
+    l.plays = (l.plays || 0) + 1;
+    persist();
+    return send(res, 200, Object.assign(levelInfo(l), { data: l.data }));
   }
   if (route === 'GET /api/devnotes') { // public: anyone can read the dev's notes
     const n = db.devnotes || { text: '', at: 0 };
@@ -217,6 +256,43 @@ async function handle(req, res) {
     });
     players.sort((x, y) => (y.online - x.online) || (y.lastSeen - x.lastSeen)); // online first
     return send(res, 200, { players });
+  }
+  // publish a level (log in first); republishing a level with the same name updates it
+  if (route === 'POST /api/levels') {
+    const b = await readBody(req);
+    const data = cleanLevel(b.level);
+    if (!data) return send(res, 400, { error: 'THE LEVEL NEEDS A START AND A FLAG' });
+    const now = Date.now();
+    const recent = (sent.get('lv:' + who.name) || []).filter((t) => now - t < 60000);
+    if (recent.length >= 5) return send(res, 429, { error: 'SLOW DOWN! TRY AGAIN IN A MINUTE' });
+    recent.push(now); sent.set('lv:' + who.name, recent);
+    db.levels = db.levels || [];
+    let l = db.levels.find((x) => x.author === who.name && x.name === data.name);
+    if (!l) {
+      if (db.levels.filter((x) => x.author === who.name).length >= 20) return send(res, 400, { error: 'YOU HAVE 20 LEVELS ONLINE. DELETE ONE FIRST' });
+      if (db.levels.length >= 5000) return send(res, 400, { error: 'THE LEVEL SERVER IS FULL' });
+      l = { id: newLevelId(), author: who.name, plays: 0, featured: false };
+      db.levels.push(l);
+    }
+    Object.assign(l, { name: data.name, data, at: now });
+    persist();
+    return send(res, 200, levelInfo(l));
+  }
+  if (lm && req.method === 'POST' && lm[2]) { // the dev stars (features) a level
+    if (who.name !== DEV_USER) return send(res, 403, { error: 'ONLY THE DEV CAN FEATURE LEVELS' });
+    const l = (db.levels || []).find((x) => x.id === lm[1]);
+    if (!l) return send(res, 404, { error: 'THAT LEVEL IS GONE' });
+    l.featured = !l.featured;
+    persist();
+    return send(res, 200, levelInfo(l));
+  }
+  if (lm && req.method === 'DELETE' && !lm[2]) { // its author (or the dev) takes a level down
+    const i = (db.levels || []).findIndex((x) => x.id === lm[1]);
+    if (i < 0) return send(res, 404, { error: 'THAT LEVEL IS GONE' });
+    if (db.levels[i].author !== who.name && who.name !== DEV_USER) return send(res, 403, { error: 'NOT YOUR LEVEL' });
+    db.levels.splice(i, 1);
+    persist();
+    return send(res, 200, { ok: true });
   }
   if (route === 'PUT /api/announce') {
     if (who.name !== DEV_USER) return send(res, 403, { error: 'ONLY THE DEV CAN ANNOUNCE' });

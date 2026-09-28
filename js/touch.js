@@ -124,6 +124,16 @@
     ['pause', 'right:16px;top:16px', 'pad', squareFace(pauseIcon, false), squareFace(pauseIcon, true)],
   ];
 
+  // Only show the buttons while you're actually playing a level: on menus they'd sit
+  // on top of things you want to tap (menus all work by tapping directly).
+  root.style.transition = 'opacity 0.15s';
+  setInterval(() => {
+    const G = window.PRECIPICE;
+    const playing = !!G && G.scene === G.Play && (G.Play.state === 'play' || G.Play.state === 'clear' || G.Play.state === 'ending');
+    root.style.opacity = playing ? '1' : '0';
+    root.style.visibility = playing ? 'visible' : 'hidden';
+  }, 150);
+
   for (const [action, pos, cls, up, down] of buttons) {
     const b = document.createElement('button');
     b.className = cls;

@@ -97,22 +97,61 @@
   const blink = (rate = 30) => Math.floor(frame / rate) % 2 === 0;
 
   // Dialog box: drop shadow, black outline, white frame with notched corners.
+  // An 8-bit text box: soft shadow, rounded pixel corners, a coloured frame with a
+  // lit top edge, a gently shaded inside, and little studs in the corners.
   function panel(x, y, w, h, border = '#fcfcfc') {
     x = Math.round(x);
     y = Math.round(y);
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(x + 3, y + 3, w, h);
+    w = Math.round(w);
+    h = Math.round(h);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(x + 3, y + 4, w, h);
+    // black outline with cut corners
     ctx.fillStyle = '#000000';
-    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(x + 2, y, w - 4, h);
+    ctx.fillRect(x, y + 2, w, h - 4);
+    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    // frame
     ctx.fillStyle = border;
-    ctx.fillRect(x + 2, y + 1, w - 4, 1);
-    ctx.fillRect(x + 2, y + h - 2, w - 4, 1);
-    ctx.fillRect(x + 1, y + 2, 1, h - 4);
-    ctx.fillRect(x + w - 2, y + 2, 1, h - 4);
+    ctx.fillRect(x + 3, y + 1, w - 6, 1);
+    ctx.fillRect(x + 3, y + h - 2, w - 6, 1);
+    ctx.fillRect(x + 1, y + 3, 1, h - 6);
+    ctx.fillRect(x + w - 2, y + 3, 1, h - 6);
+    ctx.fillRect(x + 2, y + 2, 1, 1); ctx.fillRect(x + w - 3, y + 2, 1, 1);
+    ctx.fillRect(x + 2, y + h - 3, 1, 1); ctx.fillRect(x + w - 3, y + h - 3, 1, 1);
+    // inside: dark navy, a little lighter at the top
     ctx.fillStyle = '#0c0828';
-    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    ctx.fillRect(x + 2, y + 3, w - 4, h - 6);
+    ctx.fillRect(x + 3, y + 2, w - 6, h - 4);
+    ctx.fillStyle = '#16103c';
+    ctx.fillRect(x + 3, y + 2, w - 6, Math.min(10, h - 4));
     ctx.fillStyle = '#342468';
-    ctx.fillRect(x + 3, y + 3, w - 6, 1);
+    ctx.fillRect(x + 4, y + 3, w - 8, 1);
+    ctx.fillStyle = '#08061c';
+    ctx.fillRect(x + 3, y + h - 4, w - 6, 1);
+    // corner studs
+    if (w > 40 && h > 24) {
+      ctx.fillStyle = border;
+      ctx.globalAlpha *= 0.5;
+      for (const [sx, sy] of [[x + 5, y + 5], [x + w - 6, y + 5], [x + 5, y + h - 6], [x + w - 6, y + h - 6]]) ctx.fillRect(sx, sy, 1, 1);
+      ctx.globalAlpha /= 0.5;
+    }
+  }
+
+  // Word-wrap text to a pixel width (keeps its own line breaks; never cuts a word unless it's too long).
+  function wrapToWidth(text, maxW) {
+    const cols = Math.max(4, Math.floor((maxW + 1) / 6));
+    const out = [];
+    for (const para of String(text).split('\n')) {
+      let line = '';
+      for (const word of para.split(' ')) {
+        let wd = word;
+        while (wd.length > cols) { if (line) { out.push(line); line = ''; } out.push(wd.slice(0, cols)); wd = wd.slice(cols); }
+        if ((line ? line.length + 1 : 0) + wd.length > cols) { out.push(line); line = wd; } else line = line ? line + ' ' + wd : wd;
+      }
+      out.push(line);
+    }
+    return out;
   }
 
   // Pop-open text box: grows from its centre line over ~8 frames (t = frames since it opened).
@@ -427,7 +466,6 @@
       if (Slots.any()) items.push({ id: 'load', label: 'LOAD GAME' });
       items.push(
         { id: 'tutorial', label: 'TUTORIAL' },
-        ...(IS_TOUCH ? [] : [{ id: 'editor', label: 'LEVEL EDITOR' }]), // PC only: it needs a mouse
         { id: 'guide', label: 'GUIDE' },
         { id: 'lore', label: 'LORE' },
         { id: 'settings', label: 'SETTINGS' },
@@ -448,9 +486,11 @@
       const wa = textWidth(a[0]) + 16, wb = textWidth(a[1]) + 16, wc = textWidth(a[2]) + 16;
       const r = [{ x: 6, y: H - 22, w: wa, h: 16 }, { x: W - 6 - wb, y: H - 22, w: wb, h: 16 }, { x: W / 2 - wc / 2, y: 14, w: wc, h: 16 }];
       r.push({ x: 6, y: 14, w: textWidth(a[3]) + 16, h: 16 }); // DEV NOTES (top left)
+      // LEVEL EDITOR: its own block to the right of the main menu (PC only: it needs a mouse)
+      if (!IS_TOUCH) r.push({ x: W / 2 + 74, y: this.menu.y - 8, w: 76, h: 36 });
       return r;
     },
-    cornerLabels() { return [(Account.loggedIn() ? 'ACCOUNT: ' + Account.user : 'ACCOUNT') + (Account.unread ? ' (' + Account.unread + ' NEW)' : ''), 'MORE', 'STORIES', 'DEV NOTES']; },
+    cornerLabels() { return [(Account.loggedIn() ? 'ACCOUNT: ' + Account.user : 'ACCOUNT') + (Account.unread ? ' (' + Account.unread + ' NEW)' : ''), 'MORE', 'STORIES', 'DEV NOTES', 'LEVEL\nEDITOR']; },
     setCorner(c) {
       if (c === this.corner) return;
       if (this.corner < 0) this.menuIndex = this.menu.index;
@@ -460,7 +500,7 @@
     },
     pickCorner() {
       Sound.sfx('select');
-      setScene([AccountScene, More, Stories, DevNotes][this.corner]);
+      setScene([AccountScene, More, Stories, DevNotes, MyLevels][this.corner]);
     },
     update() {
       titleUpdate();
@@ -501,8 +541,16 @@
         else if (hit(...K.ok)) this.pickCorner();
         return;
       }
+      if (this.corner === 4) {
+        // the LEVEL EDITOR block: LEFT back to the menu, RIGHT/DOWN to MORE
+        if (hit(...K.left)) this.setCorner(-1);
+        else if (hit(...K.right, ...K.down)) this.setCorner(1);
+        else if (hit(...K.up)) this.setCorner(2);
+        else if (hit(...K.ok)) this.pickCorner();
+        return;
+      }
       if (hit(...K.left)) this.setCorner(0);
-      else if (hit(...K.right)) this.setCorner(1);
+      else if (hit(...K.right)) this.setCorner(this.corner < 0 && !IS_TOUCH ? 4 : 1);
       else if (this.corner < 0 && this.menu.index === 0 && hit(...K.up)) { this.setCorner(2); return; }
       if (this.corner >= 0) {
         if (hit(...K.up, ...K.down)) this.setCorner(-1);
@@ -544,7 +592,9 @@
         ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1);
         ctx.fillRect(r.x, r.y, 1, r.h);
         ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
-        drawText(ctx, labels[i], r.x + r.w / 2, r.y + 5, sel ? PAL.c : '#b8c4f0', 1, 'center');
+        const ls = labels[i].split('\n');
+        const top = r.y + Math.round((r.h - (ls.length * 12 - 5)) / 2);
+        ls.forEach((l, k) => drawText(ctx, l, r.x + r.w / 2, top + k * 12, sel ? PAL.c : i === 4 ? PAL.y : '#b8c4f0', 1, 'center'));
       });
       ctx.globalAlpha = 1;
       drawBanner(Account.announce && Account.announce.banner, this.uiA);
@@ -1001,8 +1051,8 @@
 
   // ---------------------------------------------------------------- level editor (2.0, PC only)
   // Your own stages: paint tiles, place objects, test-play with T, save to MY LEVELS,
-  // and share a level as a code. Levels are kept in precipice.levels (so they ride
-  // along in cloud saves too).
+  // and publish them online for everyone (BROWSE: recent, featured, search). Levels
+  // are kept in precipice.levels (so they ride along in cloud saves too).
   const EDIT_TOOLS = [
     { id: '#', name: 'GROUND' }, { id: '=', name: 'BRICK' }, { id: '-', name: 'WOOD (JUMP-THROUGH)' },
     { id: 'c', name: 'CRUMBLE' }, { id: '^', name: 'SPIKES' }, { id: 'i', name: 'ICE' }, { id: 'H', name: 'LADDER' },
@@ -1024,36 +1074,10 @@
       return { name: 'MY LEVEL ' + n, w, h, rows, obj: [], start: [2, h - 3], flag: [w - 4, h - 3] };
     },
   };
-  // share codes: PRC1: + base64 of the level with run-length encoded rows
-  const LevelCode = {
-    encode(lv) {
-      const rle = (row) => row.replace(/(.)\1*/g, (m, c) => (m.length > 1 ? m.length : '') + c);
-      const data = { n: lv.name, w: lv.w, h: lv.h, r: lv.rows.map(rle), o: lv.obj, s: lv.start, f: lv.flag };
-      return 'PRC1:' + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-    },
-    decode(code) {
-      const m = /PRC1:([A-Za-z0-9+/=]+)/.exec(String(code || '').replace(/\s/g, ''));
-      if (!m) throw new Error('THAT IS NOT A LEVEL CODE');
-      const d = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-      const un = (row) => row.replace(/(\d+)(.)/g, (x, n, c) => c.repeat(+n));
-      const w = clamp(d.w | 0, 20, 400), h = clamp(d.h | 0, 17, 80);
-      const ok = new Set(EDIT_TOOLS.filter((t) => !t.obj).map((t) => t.id));
-      const rows = [];
-      for (let y = 0; y < h; y++) {
-        const row = un(String((d.r || [])[y] || '')).padEnd(w, '.').slice(0, w);
-        rows.push([...row].map((c) => (ok.has(c) ? c : '.')).join(''));
-      }
-      const pt = (p) => (Array.isArray(p) ? [clamp(p[0] | 0, 0, w - 1), clamp(p[1] | 0, 0, h - 1)] : null);
-      const types = new Set(['checkpoint', 'spring', 'crystal', 'ember', 'key', 'orb', 'mover']);
-      const obj = (Array.isArray(d.o) ? d.o : []).filter((o) => Array.isArray(o) && types.has(o[0])).slice(0, 300)
-        .map((o) => [o[0], clamp(o[1] | 0, 0, w - 1), clamp(o[2] | 0, 0, h - 1)].concat(o[0] === 'mover' ? [clamp(o[3] | 0, 0, w - 3)] : []));
-      return { name: String(d.n || 'SHARED LEVEL').toUpperCase().slice(0, 20), w, h, rows, obj, start: pt(d.s), flag: pt(d.f) };
-    },
-  };
   // A level from the editor, ready for Play.
-  function customDef(lv, fromEditor) {
+  function customDef(lv, fromEditor, online) {
     return {
-      id: 'custom', name: lv.name, objective: 'REACH THE FLAG', custom: true, fromEditor,
+      id: 'custom', name: lv.name, objective: 'REACH THE FLAG', custom: true, fromEditor, online,
       width: lv.w, rows: lv.h,
       build(b) {
         const at = (row) => row - OFF;
@@ -1067,13 +1091,11 @@
       },
     };
   }
-  function copyText(text) {
-    try { if (navigator.clipboard) return navigator.clipboard.writeText(text).then(() => true, () => false); } catch (e) { /* no clipboard */ }
-    return Promise.resolve(false);
-  }
-  function pasteText() {
-    try { if (navigator.clipboard && navigator.clipboard.readText) return navigator.clipboard.readText(); } catch (e) { /* no clipboard */ }
-    return Promise.reject(new Error('NO CLIPBOARD'));
+  // Publish a level online (needs an account). Returns a promise of the message to show.
+  function publishOnline(lv) {
+    if (!Account.loggedIn()) return Promise.resolve('LOG IN FIRST (ACCOUNT) TO PUBLISH');
+    if (!lv.start || !lv.flag) return Promise.resolve('THE LEVEL NEEDS A START AND A FLAG');
+    return Account.publishLevel(lv).then((l) => 'PUBLISHED! FIND IT UNDER RECENT (' + l.id + ')', (e) => e.message);
   }
 
   const TOOLBAR = 22, STATUSBAR = 18;
@@ -1163,7 +1185,7 @@
     },
     menuItems() {
       return [{ id: 'resume', label: 'KEEP EDITING' }, { id: 'save', label: 'SAVE' }, { id: 'test', label: 'TEST PLAY (T)' },
-        { id: 'code', label: 'COPY SHARE CODE' }, { id: 'rename', label: 'RENAME' }, { id: 'exit', label: this.dirty ? 'SAVE & EXIT' : 'EXIT' },
+        { id: 'publish', label: 'PUBLISH ONLINE' }, { id: 'rename', label: 'RENAME' }, { id: 'exit', label: this.dirty ? 'SAVE & EXIT' : 'EXIT' },
         { id: 'discard', label: 'EXIT WITHOUT SAVING' }];
     },
     update() {
@@ -1186,7 +1208,7 @@
         if (c.id === 'save') this.save();
         else if (c.id === 'test') this.test();
         else if (c.id === 'rename') { this.naming = true; }
-        else if (c.id === 'code') copyText(LevelCode.encode(this.lv)).then((ok) => this.say(ok ? 'CODE COPIED! PASTE IT TO A FRIEND' : 'COULD NOT COPY'));
+        else if (c.id === 'publish') { this.say('PUBLISHING...'); publishOnline(this.lv).then((m) => this.say(m)); }
         else if (c.id === 'exit') { if (!this.dirty || this.save()) setScene(MyLevels); }
         else if (c.id === 'discard') setScene(MyLevels);
         return;
@@ -1344,10 +1366,100 @@
     },
   };
 
-  // MY LEVELS: your saved levels, plus NEW and PASTE CODE.
+  // BROWSE: everyone's published levels. RECENT, FEATURED (starred by the dev), or SEARCH.
+  const Browse = {
+    TABS: ['RECENT', 'FEATURED', 'SEARCH'],
+    enter(back) {
+      if (back === 'back') { this.load(); return; }
+      this.tab = 0; this.q = ''; this.index = 0; this.list = null; this.msg = ''; this.t = 0;
+      this.load();
+    },
+    load() {
+      const tab = this.TABS[this.tab];
+      if (tab === 'SEARCH' && !this.q) { this.list = []; this.status = 'TYPE A LEVEL NAME, AUTHOR OR ID'; return; }
+      this.status = 'LOADING...';
+      const ask = { tab, q: this.q };
+      this.pending = ask;
+      Account.listLevels(tab === 'FEATURED' ? 'featured' : 'recent', tab === 'SEARCH' ? this.q : '').then((l) => {
+        if (this.pending !== ask) return;
+        this.list = l; this.status = l.length ? '' : tab === 'FEATURED' ? 'NO FEATURED LEVELS YET' : 'NOTHING HERE YET';
+        this.index = Math.min(this.index, Math.max(0, l.length - 1));
+      }, (e) => { this.status = e.message; });
+    },
+    play(info) {
+      this.msg = 'LOADING ' + info.name + '...';
+      Account.getLevel(info.id).then((l) => { this.msg = ''; startLevel(customDef(l.data, false, true)); }, (e) => { this.msg = e.message; });
+    },
+    update() {
+      titleUpdate();
+      this.t++;
+      if (hit('Escape')) { Sound.sfx('select'); setScene(MyLevels); return; }
+      const m = Input.mouse;
+      // tabs: TAB / LEFT / RIGHT or click
+      let tab = this.tab;
+      if (hit('Tab')) tab = (tab + 1) % 3;
+      if (this.TABS[this.tab] !== 'SEARCH' || !this.q) { if (hit('ArrowLeft')) tab = (tab + 2) % 3; if (hit('ArrowRight')) tab = (tab + 1) % 3; }
+      if (m.click && m.y >= 34 && m.y <= 48) this.TABS.forEach((t, i) => { if (Math.abs(m.x - (W / 2 - 110 + i * 110)) < 50) tab = i; });
+      if (tab !== this.tab) { this.tab = tab; this.index = 0; this.list = null; Sound.sfx('move'); this.load(); return; }
+      // search box: typing searches as you go
+      if (this.TABS[this.tab] === 'SEARCH') {
+        let q = this.q;
+        for (const ch of Input.typed) { const c = ch.toUpperCase(); if ((c === ' ' || FONT[c]) && q.length < 20) q += c; }
+        if (hit('Backspace')) q = q.slice(0, -1);
+        if (q !== this.q) { this.q = q; this.searchT = 20; }
+        if (this.searchT > 0 && --this.searchT === 0) this.load();
+      }
+      const list = this.list || [];
+      if (hit('ArrowUp') && this.index > 0) { this.index--; Sound.sfx('move'); }
+      if (hit('ArrowDown') && this.index < list.length - 1) { this.index++; Sound.sfx('move'); }
+      let chosen = hit('Enter', 'NumpadEnter');
+      const rowY = (i) => (this.TABS[this.tab] === 'SEARCH' ? 84 : 64) + i * 13;
+      if (m.moved || m.click) list.slice(0, 12).forEach((l, i) => {
+        if (m.y < rowY(i) - 3 || m.y > rowY(i) + 9 || Math.abs(m.x - W / 2) > 190) return;
+        this.index = i; if (m.click) chosen = true;
+      });
+      const sel = list[this.index];
+      // the dev stars levels to feature them (F)
+      if (sel && Account.isDev() && hit('KeyF') && this.TABS[this.tab] !== 'SEARCH') {
+        Account.starLevel(sel.id).then((l) => { sel.featured = l.featured; this.msg = l.featured ? 'FEATURED: ' + l.name : 'UNFEATURED: ' + l.name; if (this.TABS[this.tab] === 'FEATURED') this.load(); }, (e) => { this.msg = e.message; });
+      }
+      if (chosen && sel) { Sound.sfx('select'); this.play(sel); }
+    },
+    draw() {
+      drawTitleBackdrop();
+      panel(W / 2 - 200, 6, 400, 258, PAL.C);
+      drawTextOutlined(ctx, 'ONLINE LEVELS', W / 2, 14, PAL.C, 2, 'center');
+      this.TABS.forEach((t, i) => {
+        const x = W / 2 - 110 + i * 110, sel = i === this.tab;
+        drawButton({ x: x - 46, y: 34, w: 92, h: 14 }, t, sel);
+      });
+      const search = this.TABS[this.tab] === 'SEARCH';
+      if (search) {
+        ctx.fillStyle = 'rgba(8,6,28,0.9)'; ctx.fillRect(W / 2 - 150, 56, 300, 16);
+        ctx.fillStyle = PAL.c; ctx.fillRect(W / 2 - 150, 71, 300, 1);
+        drawText(ctx, (this.q || '') + (blink(15) ? '_' : ''), W / 2 - 144, 60, PAL.w);
+      }
+      const top = search ? 84 : 64;
+      const list = this.list || [];
+      if (!list.length) drawText(ctx, this.status || '', W / 2, top + 40, PAL.n, 1, 'center');
+      list.slice(0, 12).forEach((l, i) => {
+        const y = top + i * 13, sel = i === this.index;
+        if (sel) { ctx.fillStyle = 'rgba(60,188,252,0.15)'; ctx.fillRect(W / 2 - 192, y - 3, 384, 12); }
+        if (l.featured) { ctx.fillStyle = PAL.y; ctx.fillRect(W / 2 - 188, y + 1, 5, 5); ctx.fillStyle = '#fce0a8'; ctx.fillRect(W / 2 - 187, y + 1, 1, 1); }
+        drawText(ctx, l.name, W / 2 - 178, y, sel ? PAL.c : PAL.w);
+        drawText(ctx, 'BY ' + l.author, W / 2 - 40, y, l.author === Account.DEV ? PAL.y : PAL.l);
+        drawText(ctx, l.plays + ' PLAYS', W / 2 + 188, y, PAL.m, 1, 'right');
+      });
+      if (this.msg) drawText(ctx, this.msg, W / 2, 232, PAL.y, 1, 'center');
+      const help = 'ENTER: PLAY   TAB: SWITCH' + (Account.isDev() ? '   F: FEATURE' : '') + '   ESC: BACK';
+      drawText(ctx, help, W / 2, 246, PAL.n, 1, 'center');
+    },
+  };
+
+  // MY LEVELS: your saved levels, NEW LEVEL, and BROWSE ONLINE LEVELS.
   const MyLevels = {
     enter() { this.t = 0; this.index = 0; this.sub = null; this.msg = ''; this.confirm = false; this.list = MyLevelsStore.all(); },
-    rows() { return [{ id: 'new', label: '+ NEW LEVEL' }, { id: 'paste', label: 'PASTE A LEVEL CODE' }].concat(this.list.map((lv, i) => ({ id: 'lv', i, label: lv.name }))).concat([{ id: 'back', label: 'BACK' }]); },
+    rows() { return [{ id: 'new', label: '+ NEW LEVEL' }, { id: 'browse', label: 'BROWSE ONLINE LEVELS' }].concat(this.list.map((lv, i) => ({ id: 'lv', i, label: lv.name }))).concat([{ id: 'back', label: 'BACK' }]); },
     update() {
       titleUpdate();
       this.t++;
@@ -1358,7 +1470,7 @@
         const i = this.sub.i, lv = this.list[i];
         if (c.id === 'edit') setScene(Editor, i);
         else if (c.id === 'play') { if (!lv.start || !lv.flag) { this.msg = 'THIS LEVEL NEEDS A START AND A FLAG'; this.sub = null; return; } startLevel(customDef(lv, false)); }
-        else if (c.id === 'code') copyText(LevelCode.encode(lv)).then((ok) => { this.msg = ok ? 'CODE COPIED! SEND IT TO A FRIEND' : 'COULD NOT COPY'; });
+        else if (c.id === 'publish') { this.msg = 'PUBLISHING...'; publishOnline(lv).then((m) => { this.msg = m; }); }
         else if (c.id === 'delete') {
           if (!this.confirm) { this.confirm = true; this.sub.menu.items[3].label = 'DELETE: SURE?'; return; }
           this.list.splice(i, 1); MyLevelsStore.write(this.list); this.msg = 'DELETED'; this.index = 0;
@@ -1384,15 +1496,10 @@
       else if (r.id === 'new') {
         if (this.list.length >= MyLevelsStore.MAX) { this.msg = 'MY LEVELS IS FULL. DELETE ONE FIRST'; return; }
         setScene(Editor, -1);
-      } else if (r.id === 'paste') {
-        pasteText().then((text) => {
-          const lv = LevelCode.decode(text);
-          if (this.list.length >= MyLevelsStore.MAX) throw new Error('MY LEVELS IS FULL');
-          this.list.push(lv); MyLevelsStore.write(this.list);
-          this.msg = 'ADDED: ' + lv.name; Sound.sfx('check');
-        }).catch((e) => { this.msg = e.message === 'NO CLIPBOARD' ? 'COPY A LEVEL CODE FIRST, THEN TRY AGAIN' : e.message.toUpperCase().slice(0, 44); });
+      } else if (r.id === 'browse') {
+        setScene(Browse);
       } else {
-        this.sub = { i: r.i, menu: makeMenu([{ id: 'edit', label: 'EDIT' }, { id: 'play', label: 'PLAY' }, { id: 'code', label: 'COPY SHARE CODE' }, { id: 'delete', label: 'DELETE' }], 104, 16) };
+        this.sub = { i: r.i, menu: makeMenu([{ id: 'edit', label: 'EDIT' }, { id: 'play', label: 'PLAY' }, { id: 'publish', label: 'PUBLISH ONLINE' }, { id: 'delete', label: 'DELETE' }], 104, 16) };
       }
     },
     draw() {
@@ -1927,6 +2034,17 @@
 
   // What's new, newest first (Credits > Changelog).
   const CHANGELOG = [
+    { title: 'UPDATE 2.1', text: [
+      'ONLINE LEVELS', '',
+      '- PUBLISH YOUR LEVELS ONLINE FOR EVERYONE',
+      '- BROWSE ONLINE LEVELS: RECENT, FEATURED (PICKED',
+      '  BY THE DEV) AND SEARCH BY NAME OR AUTHOR',
+      '  (THIS REPLACES SHARE CODES)',
+      '- LEVEL EDITOR HAS ITS OWN BUTTON ON THE TITLE',
+      '- NICER TEXT BOXES; LONG TEXT WRAPS NEATLY',
+      '- PHONES: THE TOUCH BUTTONS ONLY SHOW WHILE',
+      '  PLAYING, SO THEY NEVER COVER THE MENUS',
+    ] },
     { title: 'UPDATE 2.0', text: [
       'THE LEVEL EDITOR', '',
       '- LEVEL EDITOR (TITLE SCREEN, PC ONLY): BUILD YOUR',
@@ -2945,7 +3063,7 @@
       this.motes = Array.from({ length: 70 }, () => ({
         x: Math.random() * W, y: Math.random() * H, v: 0.15 + Math.random() * 0.3, p: Math.random() * 6.28,
       }));
-      const quitLabel = net ? 'LEAVE RACE' : def.fromEditor ? 'BACK TO THE EDITOR' : def.custom ? 'BACK TO MY LEVELS' : 'QUIT TO TITLE';
+      const quitLabel = net ? 'LEAVE RACE' : def.fromEditor ? 'BACK TO THE EDITOR' : def.online ? 'BACK TO ONLINE LEVELS' : def.custom ? 'BACK TO MY LEVELS' : 'QUIT TO TITLE';
       this.pauseMenu = makeMenu([{ id: 'resume', label: 'RESUME' }, { id: 'quit', label: quitLabel }], 140);
       this.toast = 0;
       this.orbs = [];
@@ -3022,6 +3140,7 @@
 
     quit() {
       if (this.def.fromEditor) { setScene(Editor, 'back'); return; } // test play: straight back to editing
+      if (this.def.online) { Sound.playMusic(true); setScene(Browse, 'back'); return; }
       if (this.def.custom) { Sound.playMusic(true); setScene(MyLevels); return; }
       if (this.onlyUp) this.saveOnlyUp();
       this.saveProgress();
@@ -3046,6 +3165,7 @@
     nextAfterClear() {
       if (this.netOn) { Net.backToRoom(); Sound.playMusic(true); setScene(Room); return; }
       if (this.def.fromEditor) { setScene(Editor, 'back'); return; }
+      if (this.def.online) { Sound.playMusic(true); setScene(Browse, 'back'); return; }
       if (this.def.custom) { Sound.playMusic(true); setScene(MyLevels); return; }
       if (!this.run) { toTitle(); return; }
       const d = this.run.data;
@@ -4235,15 +4355,16 @@
       if (!b) return;
       const closeT = b.closing >= 0 ? 6 - (frame - b.closing) : undefined;
       if (closeT !== undefined && closeT <= 0) { this.signBox = null; return; }
-      const lines = fillKeys(b.sign.text).split('\n');
-      const w = Math.max(...lines.map((l) => textWidth(l))) + 16;
-      const h = lines.length * 11 + 10;
+      const lines = wrapToWidth(fillKeys(b.sign.text), 320);
+      const w = Math.max(...lines.map((l) => textWidth(l))) + 24;
+      const h = lines.length * 11 + 12;
       const x = Math.round(W / 2 - w / 2);
-      const open = animatedPanel(x, 18, w, h, frame - b.f0, '#fcfcfc', closeT);
+      const open = animatedPanel(x, 19, w, h, frame - b.f0, '#e4a444', closeT);
       if (!open) return;
+      ctx.drawImage(SIGN_SPR, x + 4, 12); // a little sign tab on the corner
       let budget = (frame - b.f0 - 8) * 2;
       lines.forEach((l, i) => {
-        drawText(ctx, l.slice(0, Math.max(0, budget)), W / 2 - textWidth(l) / 2, 24 + i * 11, i === 0 ? PAL.y : PAL.w);
+        drawText(ctx, l.slice(0, Math.max(0, budget)), W / 2 - textWidth(l) / 2, 26 + i * 11, i === 0 ? PAL.y : PAL.w);
         budget -= l.length;
       });
       if (budget >= 0) doneArrow(x + w - 10, 18 + h - 7);
@@ -4252,19 +4373,19 @@
     drawMessage() {
       const m = this.message;
       if (!m || this.state !== 'play') return;
-      const lines = m.text.split('\n');
-      const w = Math.max(textWidth(m.title), ...lines.map((l) => textWidth(l))) + 16;
-      const h = lines.length * 11 + 22;
+      const lines = wrapToWidth(m.text, 340);
+      const w = Math.max(textWidth(m.title), ...lines.map((l) => textWidth(l))) + 24;
+      const h = lines.length * 11 + 24;
       const y = H - h - 6;
       const x = Math.round(W / 2 - w / 2);
       if (!animatedPanel(x, y, w, h, m.t0 - m.t, m.color, m.t)) return;
-      drawText(ctx, m.title, W / 2, y + 5, m.color, 1, 'center');
+      drawText(ctx, m.title, W / 2, y + 6, m.color, 1, 'center');
       // typewriter reveal
       let budget = Math.floor((m.t0 - m.t - 8) * 1.5);
       lines.forEach((l, i) => {
         const shown = l.slice(0, Math.max(0, budget));
         budget -= l.length;
-        drawText(ctx, shown, W / 2 - textWidth(l) / 2, y + 17 + i * 11, PAL.w);
+        drawText(ctx, shown, W / 2 - textWidth(l) / 2, y + 18 + i * 11, PAL.w);
       });
     },
 
@@ -4312,7 +4433,7 @@
         drawTextOutlined(ctx, 'LEVEL CLEAR!', W / 2, 84, PAL.y, 2, 'center');
         drawText(ctx, L.name, W / 2, 110, PAL.C, 1, 'center');
         drawText(ctx, 'TIME ' + formatTime(this.time) + '   DEATHS ' + this.deaths, W / 2, 124, PAL.w, 1, 'center');
-        if (this.clearT > 60 && blink(20)) drawText(ctx, this.def.fromEditor ? 'ENTER: BACK TO THE EDITOR' : 'ENTER: BACK TO MY LEVELS', W / 2, 160, PAL.w, 1, 'center');
+        if (this.clearT > 60 && blink(20)) drawText(ctx, this.def.fromEditor ? 'ENTER: BACK TO THE EDITOR' : this.def.online ? 'ENTER: BACK TO ONLINE LEVELS' : 'ENTER: BACK TO MY LEVELS', W / 2, 160, PAL.w, 1, 'center');
         return;
       }
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -4486,7 +4607,7 @@
   });
 
   // Debug hooks for automated testing / screenshots.
-  window.PRECIPICE = { LevelCode, MyLevelsStore, customDef, UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Editor, MyLevels, Announce, Players, Chat, Inbox, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
+  window.PRECIPICE = { MyLevelsStore, customDef, UpdateBox, Input, Play, LEVELS, setScene, scenes: { AccountScene, Editor, MyLevels, Browse, Announce, Players, Chat, Inbox, DevNotes, Stories, Changelog, CreditsRoll, Multi, JoinCode, Room, Splash, Title, Settings, Controls, Guide, Lore, Credits, More, SlotSelect, ChapterIntro, Ending, Story, Play }, Slots, CAMPAIGN, playSlot, get scene() { return scene; }, get frame() { return frame; }, set frame(v) { frame = v; } };
 
   let boot = document.getElementById('boot'); // page-load spinner, removed after the first frame
   applyVolumes();

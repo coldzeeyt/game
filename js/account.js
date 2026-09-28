@@ -102,6 +102,12 @@ const Account = {
     } catch (e) { /* offline: keep what we had */ }
   },
   async setAnnounce(popup, banner) { this.announce = await this.call('PUT', '/api/announce', { popup, banner }); return this.announce; },
+  // ---- online levels (the level editor's browser)
+  async listLevels(list, q) { return (await this.call('GET', '/api/levels?list=' + list + (q ? '&q=' + encodeURIComponent(q) : ''), null, true)).levels || []; },
+  async getLevel(id) { return this.call('GET', '/api/levels/' + id, null, true); },
+  async publishLevel(level) { return this.call('POST', '/api/levels', { level }); },
+  async starLevel(id) { return this.call('POST', '/api/levels/' + id + '/star'); },
+  async unpublishLevel(id) { return this.call('DELETE', '/api/levels/' + id); },
   async players() { return (await this.call('GET', '/api/players')).players || []; },
   async saveNotes(text) { return this.call('PUT', '/api/devnotes', { text }); },
   // Replaces this device's saves with the cloud copy. Returns false if the cloud is empty.
